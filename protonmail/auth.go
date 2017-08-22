@@ -154,15 +154,19 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 
 type authRefreshReq struct {
 	ClientID string
-	ClientSecret string
 	UID string `json:"Uid"`
 	RefreshToken string
+
+	// Unused but required
+	ResponseType string
+	GrantType string
+	RedirectURI string
+	State string
 }
 
 func (c *Client) AuthRefresh(uid, refreshToken string) (*Auth, error) {
 	reqData := &authRefreshReq{
 		ClientID:        c.ClientID,
-		ClientSecret:    c.ClientSecret,
 		UID:             uid,
 		RefreshToken:    refreshToken,
 	}
