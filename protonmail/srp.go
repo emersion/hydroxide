@@ -41,7 +41,7 @@ func reverse(b []byte) {
 func itoa(i *big.Int, l int) []byte {
 	b := i.Bytes()
 	reverse(b)
-	padding := make([]byte, l/8 - len(b))
+	padding := make([]byte, l/8-len(b))
 	b = append(b, padding...)
 	return b
 }
@@ -52,8 +52,8 @@ func atoi(b []byte) *big.Int {
 }
 
 type proofs struct {
-	clientEphemeral []byte
-	clientProof []byte
+	clientEphemeral     []byte
+	clientProof         []byte
 	expectedServerProof []byte
 }
 
@@ -129,8 +129,8 @@ func generateProofs(l int, hash func([]byte) []byte, modulusBytes, hashedBytes, 
 	serverProof = hash(serverProof)
 
 	return &proofs{
-		clientEphemeral: itoa(clientEphemeral, l),
-		clientProof: clientProof,
+		clientEphemeral:     itoa(clientEphemeral, l),
+		clientProof:         clientProof,
 		expectedServerProof: serverProof,
 	}, nil
 }

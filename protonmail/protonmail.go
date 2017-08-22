@@ -9,7 +9,7 @@ import (
 	"strconv"
 )
 
-const Version = 2
+const Version = 3
 
 const headerAPIVersion = "X-Pm-Apiversion"
 
@@ -39,15 +39,17 @@ func (err apiError) Error() string {
 
 // Client is a ProtonMail API client.
 type Client struct {
-	HTTPClient *http.Client
-	RootURL string
+	RootURL    string
 	AppVersion string
-	ClientID string
+
+	ClientID     string
 	ClientSecret string
+
+	HTTPClient *http.Client
 }
 
 func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request, error) {
-	req, err := http.NewRequest(method, c.RootURL + path, body)
+	req, err := http.NewRequest(method, c.RootURL+path, body)
 	if err != nil {
 		return nil, err
 	}

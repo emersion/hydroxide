@@ -11,9 +11,9 @@ import (
 
 func main() {
 	c := &protonmail.Client{
-		RootURL: "https://dev.protonmail.com/api",
-		AppVersion: "Web_3.11.1",
-		ClientID: "Web",
+		RootURL:      "https://dev.protonmail.com/api",
+		AppVersion:   "Web_3.11.1",
+		ClientID:     "Web",
 		ClientSecret: "4957cc9a2e0a2a49d02475c9d013478d",
 	}
 
