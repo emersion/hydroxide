@@ -49,9 +49,9 @@ type Client struct {
 
 	HTTPClient *http.Client
 
-	uid string
+	uid         string
 	accessToken string
-	keyRing openpgp.EntityList
+	keyRing     openpgp.EntityList
 }
 
 func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request, error) {
@@ -65,7 +65,7 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 
 	if c.uid != "" && c.accessToken != "" {
 		req.Header.Set("X-Pm-Uid", c.uid)
-		req.Header.Set("Authorization", "Bearer " + c.accessToken)
+		req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	}
 
 	return req, nil

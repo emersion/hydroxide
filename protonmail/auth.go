@@ -156,22 +156,22 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 }
 
 type authRefreshReq struct {
-	ClientID string
-	UID string `json:"Uid"`
+	ClientID     string
+	UID          string `json:"Uid"`
 	RefreshToken string
 
 	// Unused but required
 	ResponseType string
-	GrantType string
-	RedirectURI string
-	State string
+	GrantType    string
+	RedirectURI  string
+	State        string
 }
 
 func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	reqData := &authRefreshReq{
-		ClientID:        c.ClientID,
-		UID:             expiredAuth.UID,
-		RefreshToken:    expiredAuth.RefreshToken,
+		ClientID:     c.ClientID,
+		UID:          expiredAuth.UID,
+		RefreshToken: expiredAuth.RefreshToken,
 	}
 
 	req, err := c.newJSONRequest(http.MethodPost, "/auth/refresh", reqData)
