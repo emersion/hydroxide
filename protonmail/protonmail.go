@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+
+	"golang.org/x/crypto/openpgp"
 )
 
 const Version = 3
@@ -46,6 +48,10 @@ type Client struct {
 	ClientSecret string
 
 	HTTPClient *http.Client
+
+	uid string
+	accessToken string
+	keyRing openpgp.EntityList
 }
 
 func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request, error) {

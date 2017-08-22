@@ -2,9 +2,11 @@ package protonmail
 
 import (
 	"encoding/base64"
+	"errors"
 	"net/http"
+	"strings"
 
-	"log"
+	"golang.org/x/crypto/openpgp"
 )
 
 type authInfoReq struct {
@@ -80,22 +82,23 @@ const (
 )
 
 type Auth struct {
-	AccessToken  string
 	ExpiresIn    int
-	TokenType    string
 	Scope        string
 	UID          string `json:"Uid"`
 	RefreshToken string
 	EventID      string
 	PasswordMode PasswordMode
 
-	privateKey string
-	keySalt    string
+	accessToken string
+	privateKey  string
+	keySalt     string
 }
 
 type authResp struct {
 	resp
 	Auth
+	AccessToken string
+	TokenType   string
 	ServerProof string
 	PrivateKey  string
 	KeySalt     string
@@ -103,6 +106,7 @@ type authResp struct {
 
 func (resp *authResp) auth() *Auth {
 	auth := &resp.Auth
+	auth.accessToken = resp.AccessToken
 	auth.privateKey = resp.PrivateKey
 	auth.keySalt = resp.KeySalt
 	return auth
@@ -141,11 +145,42 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 		return nil, err
 	}
 
-	log.Printf("%+v\n", respData)
-
 	if err := proofs.VerifyServerProof(respData.ServerProof); err != nil {
 		return nil, err
 	}
 
 	return respData.auth(), nil
+}
+
+func (c *Client) Unlock(auth *Auth, password []byte) (openpgp.EntityList, error) {
+	if auth.PasswordMode == PasswordSingle {
+		keySalt, err := base64.StdEncoding.DecodeString(auth.keySalt)
+		if err != nil {
+			return nil, err
+		}
+
+		password, err = computeKeyPassword(password, keySalt)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	keyRing, err := openpgp.ReadArmoredKeyRing(strings.NewReader(auth.privateKey))
+	if err != nil {
+		return nil, err
+	}
+	if len(keyRing) == 0 {
+		return nil, errors.New("auth key ring is empty")
+	}
+
+	for _, e := range keyRing {
+		if err := e.PrivateKey.Decrypt(password); err != nil {
+			return nil, err
+		}
+	}
+
+	c.uid = auth.UID
+	c.accessToken = auth.accessToken
+	c.keyRing = keyRing
+	return keyRing, nil
 }
