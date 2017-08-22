@@ -27,14 +27,34 @@ func main() {
 	scanner.Scan()
 	password := scanner.Text()
 
-	fmt.Printf("2FA code: ")
-	scanner.Scan()
-	code := scanner.Text()
+	authInfo, err := c.AuthInfo(username)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	auth, err := c.Auth(username, password, code, nil)
+	var twoFactorCode string
+	if authInfo.TwoFactor == 1 {
+		fmt.Printf("2FA code: ")
+		scanner.Scan()
+		twoFactorCode = scanner.Text()
+	}
+
+	auth, err := c.Auth(username, password, twoFactorCode, authInfo)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	log.Println(auth)
+
+	var mailboxPassword string
+	if auth.PasswordMode == protonmail.PasswordTwo {
+		fmt.Printf("Mailbox password: ")
+		scanner.Scan()
+		mailboxPassword = scanner.Text()
+	}
+
+	_, err = c.Unlock(auth, mailboxPassword)
+	if err != nil {
+		log.Fatal(err)
+	}
 }

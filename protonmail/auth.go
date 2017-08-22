@@ -152,14 +152,43 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 	return respData.auth(), nil
 }
 
-func (c *Client) Unlock(auth *Auth, password []byte) (openpgp.EntityList, error) {
+type authRefreshReq struct {
+	ClientID string
+	ClientSecret string
+	UID string `json:"Uid"`
+	RefreshToken string
+}
+
+func (c *Client) AuthRefresh(uid, refreshToken string) (*Auth, error) {
+	reqData := &authRefreshReq{
+		ClientID:        c.ClientID,
+		ClientSecret:    c.ClientSecret,
+		UID:             uid,
+		RefreshToken:    refreshToken,
+	}
+
+	req, err := c.newJSONRequest(http.MethodPost, "/auth/refresh", reqData)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData authResp
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.auth(), nil
+}
+
+func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, error) {
+	passphraseBytes := []byte(passphrase)
 	if auth.PasswordMode == PasswordSingle {
 		keySalt, err := base64.StdEncoding.DecodeString(auth.keySalt)
 		if err != nil {
 			return nil, err
 		}
 
-		password, err = computeKeyPassword(password, keySalt)
+		passphraseBytes, err = computeKeyPassword(passphraseBytes, keySalt)
 		if err != nil {
 			return nil, err
 		}
@@ -174,7 +203,7 @@ func (c *Client) Unlock(auth *Auth, password []byte) (openpgp.EntityList, error)
 	}
 
 	for _, e := range keyRing {
-		if err := e.PrivateKey.Decrypt(password); err != nil {
+		if err := e.PrivateKey.Decrypt(passphraseBytes); err != nil {
 			return nil, err
 		}
 	}
