@@ -47,15 +47,11 @@ func main() {
 	var password string
 	auth, err := readCachedAuth()
 	if err == nil {
-		passwordMode := auth.PasswordMode
-
 		var err error
-		auth, err = c.AuthRefresh(auth.UID, auth.RefreshToken)
+		auth, err = c.AuthRefresh(auth)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		auth.PasswordMode = passwordMode
 	} else if os.IsNotExist(err) {
 		fmt.Printf("Username: ")
 		scanner.Scan()

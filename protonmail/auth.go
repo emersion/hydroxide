@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/openpgp"
 )
@@ -82,7 +83,7 @@ const (
 )
 
 type Auth struct {
-	ExpiresIn    int
+	ExpiresAt    time.Time
 	Scope        string
 	UID          string `json:"Uid"`
 	RefreshToken string
@@ -97,6 +98,7 @@ type Auth struct {
 type authResp struct {
 	resp
 	Auth
+	ExpiresIn   int
 	AccessToken string
 	TokenType   string
 	ServerProof string
@@ -106,6 +108,7 @@ type authResp struct {
 
 func (resp *authResp) auth() *Auth {
 	auth := &resp.Auth
+	auth.ExpiresAt = time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
 	auth.accessToken = resp.AccessToken
 	auth.privateKey = resp.PrivateKey
 	auth.keySalt = resp.KeySalt
@@ -164,11 +167,11 @@ type authRefreshReq struct {
 	State string
 }
 
-func (c *Client) AuthRefresh(uid, refreshToken string) (*Auth, error) {
+func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	reqData := &authRefreshReq{
 		ClientID:        c.ClientID,
-		UID:             uid,
-		RefreshToken:    refreshToken,
+		UID:             expiredAuth.UID,
+		RefreshToken:    expiredAuth.RefreshToken,
 	}
 
 	req, err := c.newJSONRequest(http.MethodPost, "/auth/refresh", reqData)
@@ -181,7 +184,10 @@ func (c *Client) AuthRefresh(uid, refreshToken string) (*Auth, error) {
 		return nil, err
 	}
 
-	return respData.auth(), nil
+	auth := respData.auth()
+	//auth.EventID = expiredAuth.EventID
+	auth.PasswordMode = expiredAuth.PasswordMode
+	return auth, nil
 }
 
 func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, error) {

@@ -63,6 +63,11 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 	req.Header.Set("X-Pm-Appversion", c.AppVersion)
 	req.Header.Set(headerAPIVersion, strconv.Itoa(Version))
 
+	if c.uid != "" && c.accessToken != "" {
+		req.Header.Set("X-Pm-Uid", c.uid)
+		req.Header.Set("Authorization", "Bearer " + c.accessToken)
+	}
+
 	return req, nil
 }
 
