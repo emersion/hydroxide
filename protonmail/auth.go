@@ -13,16 +13,6 @@ type authInfoReq struct {
 	Username string
 }
 
-type AuthInfoResp struct {
-	resp
-	Version int
-	TwoFactor int
-	Modulus string
-	ServerEphemeral string
-	Salt string
-	SRPSession string
-}
-
 type AuthInfo struct {
 	TwoFactor int
 	version int
@@ -30,6 +20,26 @@ type AuthInfo struct {
 	serverEphemeral string
 	salt string
 	srpSession string
+}
+
+type AuthInfoResp struct {
+	resp
+	AuthInfo
+	Version int
+	Modulus string
+	ServerEphemeral string
+	Salt string
+	SRPSession string
+}
+
+func (resp *AuthInfoResp) authInfo() *AuthInfo {
+	info := &resp.AuthInfo
+	info.version = resp.Version
+	info.modulus = resp.Modulus
+	info.serverEphemeral = resp.ServerEphemeral
+	info.salt = resp.Salt
+	info.srpSession = resp.SRPSession
+	return info
 }
 
 func (c *Client) AuthInfo(username string) (*AuthInfo, error) {
@@ -49,14 +59,7 @@ func (c *Client) AuthInfo(username string) (*AuthInfo, error) {
 		return nil, err
 	}
 
-	return &AuthInfo{
-		TwoFactor: respData.TwoFactor,
-		version: respData.Version,
-		modulus: respData.Modulus,
-		serverEphemeral: respData.ServerEphemeral,
-		salt: respData.Salt,
-		srpSession: respData.SRPSession,
-	}, nil
+	return respData.authInfo(), nil
 }
 
 type authReq struct {
