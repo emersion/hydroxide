@@ -3,14 +3,12 @@ package protonmail
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"io"
 	"math/big"
 
-	"github.com/emersion/go-bcrypt"
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
 	openpgperrors "golang.org/x/crypto/openpgp/errors"
@@ -31,41 +29,6 @@ func decodeModulus(msg string) ([]byte, error) {
 	}
 
 	return base64.StdEncoding.DecodeString(string(block.Plaintext))
-}
-
-func expandHash(b []byte) []byte {
-	var expanded []byte
-	var part [64]byte
-
-	part = sha512.Sum512(append(b, 0))
-	expanded = append(expanded, part[:]...)
-
-	part = sha512.Sum512(append(b, 1))
-	expanded = append(expanded, part[:]...)
-
-	part = sha512.Sum512(append(b, 2))
-	expanded = append(expanded, part[:]...)
-
-	part = sha512.Sum512(append(b, 3))
-	expanded = append(expanded, part[:]...)
-
-	return expanded
-}
-
-func hashPassword(version int, password, salt, modulus []byte) ([]byte, error) {
-	switch version {
-	case 3, 4:
-		salt = append(salt, []byte("proton")...)
-		hashed, err := bcrypt.GenerateFromPasswordAndSalt(password, 10, salt)
-		if err != nil {
-			return nil, err
-		}
-
-		hashed = bytes.Replace(hashed, []byte("$2a$"), []byte("$2y$"), 1)
-		return expandHash(append([]byte(hashed), modulus...)), nil
-	default:
-		return nil, errors.New("unsupported auth version")
-	}
 }
 
 func reverse(b []byte) {

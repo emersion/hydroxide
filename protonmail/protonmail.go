@@ -63,7 +63,12 @@ func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Re
 	if err := json.NewEncoder(&b).Encode(body); err != nil {
 		return nil, err
 	}
-	return c.newRequest(method, path, &b)
+	req, err := c.newRequest(method, path, &b)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
 }
 
 func (c *Client) do(req *http.Request) (*http.Response, error) {
@@ -75,6 +80,8 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Client) doJSON(req *http.Request, respData interface{}) error {
+	req.Header.Set("Accept", "application/json")
+
 	resp, err := c.do(req)
 	if err != nil {
 		return err

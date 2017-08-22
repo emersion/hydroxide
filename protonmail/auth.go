@@ -79,8 +79,7 @@ const (
 	PasswordTwo = 2
 )
 
-type authResp struct {
-	resp
+type Auth struct {
 	AccessToken string
 	ExpiresIn int
 	TokenType string
@@ -88,17 +87,32 @@ type authResp struct {
 	UID string `json:"Uid"`
 	RefreshToken string
 	EventID string
-	ServerProof string
 	PasswordMode PasswordMode
+
+	privateKey string
+	keySalt string
+}
+
+type authResp struct {
+	resp
+	Auth
+	ServerProof string
 	PrivateKey string
 	KeySalt string
 }
 
-func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) error {
+func (resp *authResp) auth() *Auth {
+	auth := &resp.Auth
+	auth.privateKey = resp.PrivateKey
+	auth.keySalt = resp.KeySalt
+	return auth
+}
+
+func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) (*Auth, error) {
 	if info == nil {
 		var err error
 		if info, err = c.AuthInfo(username); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -106,7 +120,7 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 
 	proofs, err := srp([]byte(password), info)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	reqData := &authReq{
@@ -118,23 +132,22 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 		ClientProof: base64.StdEncoding.EncodeToString(proofs.clientProof),
 		TwoFactorCode: twoFactorCode,
 	}
-	log.Printf("%#v\n", reqData)
 
 	req, err := c.newJSONRequest(http.MethodPost, "/auth", reqData)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var respData authResp
 	if err := c.doJSON(req, &respData); err != nil {
-		return err
+		return nil, err
 	}
 
-	log.Printf("%#v\n", respData)
+	log.Printf("%+v\n", respData)
 
 	if err := proofs.VerifyServerProof(respData.ServerProof); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return respData.auth(), nil
 }

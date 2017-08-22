@@ -31,8 +31,10 @@ func main() {
 	scanner.Scan()
 	code := scanner.Text()
 
-	err := c.Auth(username, password, code, nil)
+	auth, err := c.Auth(username, password, code, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	log.Println(auth)
 }
