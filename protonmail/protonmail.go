@@ -90,6 +90,10 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 func (c *Client) doJSON(req *http.Request, respData interface{}) error {
 	req.Header.Set("Accept", "application/json")
 
+	if respData == nil {
+		respData = new(resp)
+	}
+
 	resp, err := c.do(req)
 	if err != nil {
 		return err

@@ -213,3 +213,19 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 	c.keyRing = keyRing
 	return keyRing, nil
 }
+
+func (c *Client) Logout() error {
+	req, err := c.newRequest(http.MethodDelete, "/auth", nil)
+	if err != nil {
+		return err
+	}
+
+	if err := c.doJSON(req, nil); err != nil {
+		return err
+	}
+
+	c.uid = ""
+	c.accessToken = ""
+	c.keyRing = nil
+	return nil
+}
