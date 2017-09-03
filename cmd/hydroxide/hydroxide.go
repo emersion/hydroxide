@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 
+	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/protonmail"
 )
 
@@ -99,4 +101,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	h := carddav.NewHandler(c)
+
+	s := &http.Server{
+		Addr: "127.0.0.1:8080",
+		Handler: h,
+	}
+
+	log.Println("Starting server at", s.Addr)
+	log.Fatal(s.ListenAndServe())
 }

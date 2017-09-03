@@ -3,11 +3,14 @@ package protonmail
 import (
 	"encoding/base64"
 	"errors"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/armor"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 type authInfoReq struct {
@@ -204,6 +207,8 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 		}
 	}
 
+	// Read private keys and unlock them
+
 	keyRing, err := openpgp.ReadArmoredKeyRing(strings.NewReader(auth.privateKey))
 	if err != nil {
 		return nil, err
@@ -213,13 +218,47 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 	}
 
 	for _, e := range keyRing {
-		if err := e.PrivateKey.Decrypt(passphraseBytes); err != nil {
-			return nil, err
+		var privateKeys []*packet.PrivateKey
+
+		// e.PrivateKey is a signing key
+		if e.PrivateKey != nil {
+			privateKeys = append(privateKeys, e.PrivateKey)
+		}
+
+		// e.Subkeys are encryption keys
+		for _, subkey := range e.Subkeys {
+			if subkey.PrivateKey != nil {
+				privateKeys = append(privateKeys, subkey.PrivateKey)
+			}
+		}
+
+		for _, priv := range privateKeys {
+			if err := priv.Decrypt(passphraseBytes); err != nil {
+				return nil, err
+			}
 		}
 	}
 
+	// Decrypt access token
+
+	block, err := armor.Decode(strings.NewReader(auth.accessToken))
+	if err != nil {
+		return nil, err
+	}
+
+	msg, err := openpgp.ReadMessage(block.Body, keyRing, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: maybe check signature
+	accessTokenBytes, err := ioutil.ReadAll(msg.UnverifiedBody)
+	if err != nil {
+		return nil, err
+	}
+
 	c.uid = auth.UID
-	c.accessToken = auth.accessToken
+	c.accessToken = string(accessTokenBytes)
 	c.keyRing = keyRing
 	return keyRing, nil
 }

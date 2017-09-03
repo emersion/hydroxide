@@ -2,37 +2,75 @@ package protonmail
 
 import (
 	"net/http"
+	"net/url"
+	"strconv"
 )
 
 type Contact struct {
 	ID       string
 	Name     string
+	UID      string
+	Size     int
+	CreateTime int
+	ModifyTime int
 	LabelIDs []string
 
-	Emails []*ContactEmail
-	Data   []*ContactData
+	// Not when using ListContacts
+	ContactEmails []*ContactEmail
+	Cards         []*ContactCard
 }
+
+type ContactEmailDefaults int
 
 type ContactEmail struct {
 	ID        string
-	Name      string
 	Email     string
-	Type      string
-	Encrypt   int
+	Type      []string
+	Defaults  ContactEmailDefaults
 	Order     int
 	ContactID string
 	LabelIDs  []string
+
+	// Only when using ListContactsEmails
+	Name string
 }
 
-type ContactDataType int
+type ContactCardType int
 
 const (
-	ContactDataEncrypted ContactDataType = 1
+	ContactCardCleartext ContactCardType = iota
+	ContactCardEncrypted
+	ContactCardSigned
+	ContactCardEncryptedAndSigned
 )
 
-type ContactData struct {
-	Type ContactDataType
-	Data string
+func (t ContactCardType) Signed() bool {
+	switch t {
+	case ContactCardSigned, ContactCardEncryptedAndSigned:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t ContactCardType) Encrypted() bool {
+	switch t {
+	case ContactCardEncrypted, ContactCardEncryptedAndSigned:
+		return true
+	default:
+		return false
+	}
+}
+
+type ContactCard struct {
+	Type      ContactCardType
+	Data      string
+	Signature string
+}
+
+type ContactExport struct {
+	ID    string
+	Cards []*ContactCard
 }
 
 func (c *Client) ListContacts() ([]*Contact, error) {
@@ -52,21 +90,52 @@ func (c *Client) ListContacts() ([]*Contact, error) {
 	return respData.Contacts, nil
 }
 
-func (c *Client) ListContactsEmails() ([]*ContactEmail, error) {
-	req, err := c.newRequest(http.MethodGet, "/contacts/emails", nil)
+func (c *Client) ListContactsEmails(page, pageSize int) (total int, emails []*ContactEmail, err error) {
+	v := url.Values{}
+	v.Set("Page", strconv.Itoa(page))
+	if pageSize > 0 {
+		v.Set("PageSize", strconv.Itoa(pageSize))
+	}
+
+	req, err := c.newRequest(http.MethodGet, "/contacts/emails?"+v.Encode(), nil)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
 	var respData struct {
 		resp
-		Contacts []*ContactEmail
+		ContactEmails []*ContactEmail
+		Total         int
 	}
 	if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
-	return respData.Contacts, nil
+	return respData.Total, respData.ContactEmails, nil
+}
+
+func (c *Client) ListContactsExport(page, pageSize int) (total int, contacts []*ContactExport, err error) {
+	v := url.Values{}
+	v.Set("Page", strconv.Itoa(page))
+	if pageSize > 0 {
+		v.Set("PageSize", strconv.Itoa(pageSize))
+	}
+
+	req, err := c.newRequest(http.MethodGet, "/contacts/export?"+v.Encode(), nil)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var respData struct {
+		resp
+		Contacts []*ContactExport
+		Total    int
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return 0, nil, err
+	}
+
+	return respData.Total, respData.Contacts, nil
 }
 
 func (c *Client) GetContact(id string) (*Contact, error) {
