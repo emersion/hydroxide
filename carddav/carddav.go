@@ -7,8 +7,6 @@ import (
 	"github.com/emersion/hydroxide/protonmail"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
-
-	"log"
 )
 
 type addressObject struct {
@@ -48,41 +46,69 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 }
 
 type addressBook struct {
-	c *protonmail.Client
+	c     *protonmail.Client
+	cache map[string]carddav.AddressObject
+	total int
+}
+
+func (ab *addressBook) cacheComplete() bool {
+	return ab.total >= 0 && len(ab.cache) == ab.total
 }
 
 func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
-	// TODO: cache this
+	if ab.cacheComplete() {
+		aos := make([]carddav.AddressObject, 0, len(ab.cache))
+		for _, ao := range ab.cache {
+			aos = append(aos, ao)
+		}
+		return aos, nil
+	}
+
 	// TODO: paging support
-	_, contacts, err := ab.c.ListContactsExport(0, 0)
-log.Println(contacts, err)
+	total, contacts, err := ab.c.ListContactsExport(0, 0)
 	if err != nil {
 		return nil, err
 	}
 
+	ab.total = total
+
 	aos := make([]carddav.AddressObject, len(contacts))
 	for i, contact := range contacts {
-		aos[i] = &addressObject{c: ab.c, contact: contact}
+		ao := &addressObject{c: ab.c, contact: contact}
+		ab.cache[contact.ID] = ao
+		aos[i] = ao
 	}
 
 	return aos, nil
 }
 
 func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error) {
+	if ao, ok := ab.cache[id]; ok {
+		return ao, nil
+	} else if ab.cacheComplete() {
+		return nil, carddav.ErrNotFound
+	}
+
 	contact, err := ab.c.GetContact(id)
 	if err != nil {
 		return nil, err
 	}
 
-	return &addressObject{
+	ao := &addressObject{
 		c: ab.c,
 		contact: &protonmail.ContactExport{
 			ID: contact.ID,
 			Cards: contact.Cards,
 		},
-	}, nil
+	}
+	ab.cache[id] = ao
+	return ao, nil
 }
 
 func NewHandler(c *protonmail.Client) http.Handler {
-	return carddav.NewHandler(&addressBook{c})
+	return carddav.NewHandler(&addressBook{
+		c: c,
+		cache: make(map[string]carddav.AddressObject),
+		total: -1,
+	})
 }
