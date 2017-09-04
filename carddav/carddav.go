@@ -64,19 +64,29 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 		return aos, nil
 	}
 
-	// TODO: paging support
-	total, contacts, err := ab.c.ListContactsExport(0, 0)
-	if err != nil {
-		return nil, err
-	}
+	var aos []carddav.AddressObject
+	page := 0
+	for {
+		total, contacts, err := ab.c.ListContactsExport(page, 0)
+		if err != nil {
+			return nil, err
+		}
+		ab.total = total
 
-	ab.total = total
+		if aos == nil {
+			aos = make([]carddav.AddressObject, 0, total)
+		}
 
-	aos := make([]carddav.AddressObject, len(contacts))
-	for i, contact := range contacts {
-		ao := &addressObject{c: ab.c, contact: contact}
-		ab.cache[contact.ID] = ao
-		aos[i] = ao
+		for _, contact := range contacts {
+			ao := &addressObject{c: ab.c, contact: contact}
+			ab.cache[contact.ID] = ao
+			aos = append(aos, ao)
+		}
+
+		if len(aos) == total || len(contacts) == 0 {
+			break
+		}
+		page++
 	}
 
 	return aos, nil
