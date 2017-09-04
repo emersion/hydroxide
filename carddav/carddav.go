@@ -2,6 +2,7 @@ package carddav
 
 import (
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/emersion/hydroxide/protonmail"
@@ -43,6 +44,10 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 	}
 
 	return card, nil
+}
+
+func (ao *addressObject) Stat() (os.FileInfo, error) {
+	return nil, nil
 }
 
 type addressBook struct {
