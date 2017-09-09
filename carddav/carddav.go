@@ -10,6 +10,10 @@ import (
 	"github.com/emersion/go-webdav/carddav"
 )
 
+type contextKey string
+
+const ClientContextKey = contextKey("client")
+
 type addressObject struct {
 	c *protonmail.Client
 	contact *protonmail.ContactExport

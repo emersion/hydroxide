@@ -1,14 +1,19 @@
 # hydroxide
 
-A third-party, open-source ProtonMail bridge
+A third-party, open-source ProtonMail CardDAV bridge.
 
 ## Usage
 
+Your credentials will be stored on disk encrypted with a 32-byte random
+password. When configuring your CardDAV client, you'll need this password.
+
 ```shell
-go run cmd/hydroxide/hydroxide.go
+go get github.com/emersion/hydroxide
+hydroxide auth <username>
+hydroxide
 ```
 
-Tested on GNOME and Android.
+Tested on GNOME (Evolution) and Android (DAVDroid).
 
 ## License
 
