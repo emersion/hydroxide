@@ -89,6 +89,14 @@ type addressBook struct {
 	total int
 }
 
+func (ab *addressBook) Info() (*carddav.AddressBookInfo, error) {
+	return &carddav.AddressBookInfo{
+		Name: "ProtonMail",
+		Description: "ProtonMail contacts",
+		MaxResourceSize: 100 * 1024,
+	}, nil
+}
+
 func (ab *addressBook) cacheComplete() bool {
 	return ab.total >= 0 && len(ab.cache) == ab.total
 }
