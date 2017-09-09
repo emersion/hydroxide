@@ -207,10 +207,15 @@ func main() {
 
 		fmt.Println("Bridge password:", bridgePassword)
 	case "":
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+
 		sessions := make(map[string]*session)
 
 		s := &http.Server{
-			Addr: "127.0.0.1:8080",
+			Addr: "127.0.0.1:"+port,
 			Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 				resp.Header().Set("WWW-Authenticate", "Basic")
 
