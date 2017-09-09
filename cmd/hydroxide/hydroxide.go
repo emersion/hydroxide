@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/protonmail"
@@ -120,6 +121,26 @@ func authenticate(c *protonmail.Client, cachedAuth *cachedAuth) error {
 
 	_, err = c.Unlock(auth, cachedAuth.MailboxPassword)
 	return err
+}
+
+func receiveEvents(c *protonmail.Client, last string, ch chan<- *protonmail.Event) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+
+	for range t.C {
+		event, err := c.GetEvent(last)
+		if err != nil {
+			log.Println("Cannot receive event:", err)
+			continue
+		}
+
+		if event.ID == last {
+			continue
+		}
+		last = event.ID
+
+		ch <- event
+	}
 }
 
 type session struct {
@@ -286,7 +307,9 @@ func main() {
 						return
 					}
 
-					h = carddav.NewHandler(c)
+					events := make(chan *protonmail.Event)
+					go receiveEvents(c, cachedAuth.EventID, events)
+					h = carddav.NewHandler(c, events)
 
 					sessions[username] = &session{
 						h: h,
