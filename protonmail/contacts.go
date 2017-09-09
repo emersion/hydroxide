@@ -11,8 +11,8 @@ type Contact struct {
 	Name     string
 	UID      string
 	Size     int
-	CreateTime int
-	ModifyTime int
+	CreateTime int64
+	ModifyTime int64
 	LabelIDs []string
 
 	// Not when using ListContacts
@@ -73,21 +73,28 @@ type ContactExport struct {
 	Cards []*ContactCard
 }
 
-func (c *Client) ListContacts() ([]*Contact, error) {
-	req, err := c.newRequest(http.MethodGet, "/contacts", nil)
+func (c *Client) ListContacts(page, pageSize int) (total int, contacts []*Contact, err error) {
+	v := url.Values{}
+	v.Set("Page", strconv.Itoa(page))
+	if pageSize > 0 {
+		v.Set("PageSize", strconv.Itoa(pageSize))
+	}
+
+	req, err := c.newRequest(http.MethodGet, "/contacts?"+v.Encode(), nil)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
 	var respData struct {
 		resp
 		Contacts []*Contact
+		Total    int
 	}
 	if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
-	return respData.Contacts, nil
+	return respData.Total, respData.Contacts, nil
 }
 
 func (c *Client) ListContactsEmails(page, pageSize int) (total int, emails []*ContactEmail, err error) {

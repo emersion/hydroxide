@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/emersion/hydroxide/protonmail"
 	"github.com/emersion/go-vcard"
@@ -14,9 +15,37 @@ type contextKey string
 
 const ClientContextKey = contextKey("client")
 
+type addressFileInfo struct {
+	contact *protonmail.Contact
+}
+
+func (fi *addressFileInfo) Name() string {
+	return fi.contact.ID + ".vcf"
+}
+
+func (fi *addressFileInfo) Size() int64 {
+	return int64(fi.contact.Size)
+}
+
+func (fi *addressFileInfo) Mode() os.FileMode {
+	return os.ModePerm
+}
+
+func (fi *addressFileInfo) ModTime() time.Time {
+	return time.Unix(fi.contact.ModifyTime, 0)
+}
+
+func (fi *addressFileInfo) IsDir() bool {
+	return false
+}
+
+func (fi *addressFileInfo) Sys() interface{} {
+	return nil
+}
+
 type addressObject struct {
 	c *protonmail.Client
-	contact *protonmail.ContactExport
+	contact *protonmail.Contact
 }
 
 func (ao *addressObject) ID() string {
@@ -51,12 +80,12 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 }
 
 func (ao *addressObject) Stat() (os.FileInfo, error) {
-	return nil, nil
+	return &addressFileInfo{ao.contact}, nil
 }
 
 type addressBook struct {
 	c     *protonmail.Client
-	cache map[string]carddav.AddressObject
+	cache map[string]*addressObject
 	total int
 }
 
@@ -73,6 +102,24 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 		return aos, nil
 	}
 
+	// Get a list of all contacts
+	// TODO: paging support
+	total, contacts, err := ab.c.ListContacts(0, 0)
+	if err != nil {
+		return nil, err
+	}
+	ab.total = total
+
+	for _, contact := range contacts {
+		if _, ok := ab.cache[contact.ID]; !ok {
+			ab.cache[contact.ID] = &addressObject{
+				c: ab.c,
+				contact: contact,
+			}
+		}
+	}
+
+	// Get all contacts cards
 	var aos []carddav.AddressObject
 	page := 0
 	for {
@@ -87,8 +134,16 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 		}
 
 		for _, contact := range contacts {
-			ao := &addressObject{c: ab.c, contact: contact}
-			ab.cache[contact.ID] = ao
+			ao, ok := ab.cache[contact.ID]
+			if !ok {
+				ao = &addressObject{
+					c: ab.c,
+					contact: &protonmail.Contact{ID: contact.ID},
+				}
+				ab.cache[contact.ID] = ao
+			}
+
+			ao.contact.Cards = contact.Cards
 			aos = append(aos, ao)
 		}
 
@@ -115,10 +170,7 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 
 	ao := &addressObject{
 		c: ab.c,
-		contact: &protonmail.ContactExport{
-			ID: contact.ID,
-			Cards: contact.Cards,
-		},
+		contact: contact,
 	}
 	ab.cache[id] = ao
 	return ao, nil
@@ -127,7 +179,7 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 func NewHandler(c *protonmail.Client) http.Handler {
 	return carddav.NewHandler(&addressBook{
 		c: c,
-		cache: make(map[string]carddav.AddressObject),
+		cache: make(map[string]*addressObject),
 		total: -1,
 	})
 }
