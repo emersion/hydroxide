@@ -243,6 +243,7 @@ func main() {
 				username, password, ok := req.BasicAuth()
 				if !ok {
 					resp.WriteHeader(http.StatusUnauthorized)
+					io.WriteString(resp, "Credentials are required")
 					return
 				}
 
@@ -250,6 +251,7 @@ func main() {
 				passwordBytes, err := base64.StdEncoding.DecodeString(password)
 				if err != nil || len(passwordBytes) != len(secretKey) {
 					resp.WriteHeader(http.StatusUnauthorized)
+					io.WriteString(resp, "Invalid password format")
 					return
 				}
 				copy(secretKey[:], passwordBytes)
@@ -260,6 +262,7 @@ func main() {
 					err := bcrypt.CompareHashAndPassword(s.hashedSecretKey, secretKey[:])
 					if err != nil {
 						resp.WriteHeader(http.StatusUnauthorized)
+						io.WriteString(resp, "Invalid username or password")
 						return
 					}
 
@@ -268,24 +271,28 @@ func main() {
 					auths, err := readCachedAuths()
 					if err != nil && !os.IsNotExist(err) {
 						resp.WriteHeader(http.StatusInternalServerError)
+						log.Println("Cannot open cached auths")
 						return
 					}
 
 					encrypted, ok := auths[username]
 					if !ok {
 						resp.WriteHeader(http.StatusUnauthorized)
+						io.WriteString(resp, "Invalid username or password")
 						return
 					}
 
 					decrypted, err := decrypt(encrypted, &secretKey)
 					if err != nil {
 						resp.WriteHeader(http.StatusUnauthorized)
+						io.WriteString(resp, "Invalid username or password")
 						return
 					}
 
 					var cachedAuth cachedAuth
 					if err := json.Unmarshal(decrypted, &cachedAuth); err != nil {
 						resp.WriteHeader(http.StatusInternalServerError)
+						log.Printf("Cannot unmarshal cached auth for %q: %v", username, err)
 						return
 					}
 
@@ -293,17 +300,20 @@ func main() {
 					c := newClient()
 					if err := authenticate(c, &cachedAuth); err != nil {
 						resp.WriteHeader(http.StatusInternalServerError)
+						log.Printf("Cannot authenticate %q: %v", username, err)
 						return
 					}
 
 					if err := encryptAndSaveAuth(&cachedAuth, username, &secretKey); err != nil {
 						resp.WriteHeader(http.StatusInternalServerError)
+						log.Printf("Cannot save auth for %q: %v", username, err)
 						return
 					}
 
 					hashed, err := bcrypt.GenerateFromPassword(secretKey[:], bcrypt.DefaultCost)
 					if err != nil {
 						resp.WriteHeader(http.StatusInternalServerError)
+						log.Printf("Cannot hash password for %q: %v", username, err)
 						return
 					}
 
