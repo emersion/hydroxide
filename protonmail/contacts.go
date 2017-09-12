@@ -170,11 +170,14 @@ type CreateContactResp struct {
 	}
 }
 
+func (resp *CreateContactResp) Err() error {
+	return resp.Response.Err()
+}
+
 func (c *Client) CreateContacts(contacts []*Contact) ([]*CreateContactResp, error) {
 	reqData := struct {
 		Contacts []*Contact
 	}{contacts}
-
 	req, err := c.newJSONRequest(http.MethodPost, "/contacts", &reqData)
 	if err != nil {
 		return nil, err
@@ -189,4 +192,69 @@ func (c *Client) CreateContacts(contacts []*Contact) ([]*CreateContactResp, erro
 	}
 
 	return respData.Responses, nil
+}
+
+func (c *Client) UpdateContact(id string, cards []*ContactCard) (*Contact, error) {
+	reqData := struct {
+		Cards []*ContactCard
+	}{cards}
+	req, err := c.newJSONRequest(http.MethodPut, "/contacts/"+id, &reqData)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Contact *Contact
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Contact, nil
+}
+
+type DeleteContactResp struct {
+	ID string
+	Response struct {
+		resp
+	}
+}
+
+func (resp *DeleteContactResp) Err() error {
+	return resp.Response.Err()
+}
+
+func (c *Client) DeleteContacts(ids []string) ([]*DeleteContactResp, error) {
+	reqData := struct {
+		IDs []string
+	}{ids}
+	req, err := c.newJSONRequest(http.MethodPut, "/contacts/delete", &reqData)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Responses []*DeleteContactResp
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Responses, nil
+}
+
+func (c *Client) DeleteAllContacts() error {
+	req, err := c.newRequest(http.MethodDelete, "/contacts", nil)
+	if err != nil {
+		return err
+	}
+
+	var respData resp
+	if err := c.doJSON(req, &respData); err != nil {
+		return err
+	}
+
+	return nil
 }

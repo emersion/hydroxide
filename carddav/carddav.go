@@ -195,6 +195,7 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 
 	contact, err := ab.c.GetContact(id)
 	if err != nil {
+		// TODO: return carddav.ErrNotFound if appropriate
 		return nil, err
 	}
 
