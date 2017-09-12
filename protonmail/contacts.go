@@ -73,6 +73,10 @@ type ContactExport struct {
 	Cards []*ContactCard
 }
 
+type ContactImport struct {
+	Cards []*ContactCard
+}
+
 func (c *Client) ListContacts(page, pageSize int) (total int, contacts []*Contact, err error) {
 	v := url.Values{}
 	v.Set("Page", strconv.Itoa(page))
@@ -163,7 +167,7 @@ func (c *Client) GetContact(id string) (*Contact, error) {
 }
 
 type CreateContactResp struct {
-	Input    *Contact
+	Index int
 	Response struct {
 		resp
 		Contact *Contact
@@ -174,10 +178,11 @@ func (resp *CreateContactResp) Err() error {
 	return resp.Response.Err()
 }
 
-func (c *Client) CreateContacts(contacts []*Contact) ([]*CreateContactResp, error) {
+func (c *Client) CreateContacts(contacts []*ContactImport) ([]*CreateContactResp, error) {
 	reqData := struct {
-		Contacts []*Contact
-	}{contacts}
+		Contacts []*ContactImport
+		Overwrite, Groups, Labels int
+	}{contacts, 0, 0, 0}
 	req, err := c.newJSONRequest(http.MethodPost, "/contacts", &reqData)
 	if err != nil {
 		return nil, err

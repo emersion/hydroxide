@@ -1,6 +1,8 @@
 package carddav
 
 import (
+	"bytes"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -53,6 +55,10 @@ func (ao *addressObject) ID() string {
 	return ao.contact.ID
 }
 
+func (ao *addressObject) Stat() (os.FileInfo, error) {
+	return &addressFileInfo{ao.contact}, nil
+}
+
 func (ao *addressObject) Card() (vcard.Card, error) {
 	card := make(vcard.Card)
 
@@ -80,8 +86,8 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 	return card, nil
 }
 
-func (ao *addressObject) Stat() (os.FileInfo, error) {
-	return &addressFileInfo{ao.contact}, nil
+func (ao *addressObject) SetCard(card vcard.Card) error {
+	return errors.New("hydroxide/carddav: not yet implemented")
 }
 
 type addressBook struct {
@@ -198,6 +204,42 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 		// TODO: return carddav.ErrNotFound if appropriate
 		return nil, err
 	}
+
+	ao := &addressObject{
+		c: ab.c,
+		contact: contact,
+	}
+	ab.cacheAddressObject(ao)
+	return ao, nil
+}
+
+func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObject, error) {
+	// TODO: sign/encrypt stuff
+
+	var b bytes.Buffer
+	if err := vcard.NewEncoder(&b).Encode(card); err != nil {
+		return nil, err
+	}
+
+	contactImport := &protonmail.ContactImport{
+		Cards: []*protonmail.ContactCard{
+			{Data: b.String()},
+		},
+	}
+
+	resps, err := ab.c.CreateContacts([]*protonmail.ContactImport{contactImport})
+	if err != nil {
+		return nil, err
+	}
+	if len(resps) != 1 {
+		return nil, errors.New("hydroxide/carddav: expected exactly one response when creating contact")
+	}
+	resp := resps[0]
+	if err := resp.Err(); err != nil {
+		return nil, err
+	}
+	contact := resp.Response.Contact
+	contact.Cards = contactImport.Cards // Not returned by the server
 
 	ao := &addressObject{
 		c: ab.c,
