@@ -15,8 +15,6 @@ import (
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/emersion/hydroxide/protonmail"
 	"golang.org/x/crypto/openpgp"
-
-	"log"
 )
 
 type contextKey string
@@ -75,7 +73,6 @@ func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.Contac
 		if err != nil {
 			return nil, err
 		}
-		log.Println(encrypted)
 		contactImport.Cards = append(contactImport.Cards, encrypted)
 		b.Reset()
 	}
