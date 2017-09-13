@@ -199,11 +199,8 @@ func (c *Client) CreateContacts(contacts []*ContactImport) ([]*CreateContactResp
 	return respData.Responses, nil
 }
 
-func (c *Client) UpdateContact(id string, cards []*ContactCard) (*Contact, error) {
-	reqData := struct {
-		Cards []*ContactCard
-	}{cards}
-	req, err := c.newJSONRequest(http.MethodPut, "/contacts/"+id, &reqData)
+func (c *Client) UpdateContact(id string, contact *ContactImport) (*Contact, error) {
+	req, err := c.newJSONRequest(http.MethodPut, "/contacts/"+id, contact)
 	if err != nil {
 		return nil, err
 	}

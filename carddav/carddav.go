@@ -18,6 +18,21 @@ type contextKey string
 
 const ClientContextKey = contextKey("client")
 
+func formatCard(card vcard.Card) (*protonmail.ContactImport, error) {
+	// TODO: sign/encrypt stuff
+
+	var b bytes.Buffer
+	if err := vcard.NewEncoder(&b).Encode(card); err != nil {
+		return nil, err
+	}
+
+	return &protonmail.ContactImport{
+		Cards: []*protonmail.ContactCard{
+			{Data: b.String()},
+		},
+	}, nil
+}
+
 type addressFileInfo struct {
 	contact *protonmail.Contact
 }
@@ -87,7 +102,19 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 }
 
 func (ao *addressObject) SetCard(card vcard.Card) error {
-	return errors.New("hydroxide/carddav: not yet implemented")
+	contactImport, err := formatCard(card)
+	if err != nil {
+		return err
+	}
+
+	contact, err := ao.c.UpdateContact(ao.contact.ID, contactImport)
+	if err != nil {
+		return err
+	}
+	contact.Cards = contactImport.Cards // Not returned by the server
+
+	ao.contact = contact
+	return nil
 }
 
 type addressBook struct {
@@ -214,17 +241,9 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 }
 
 func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObject, error) {
-	// TODO: sign/encrypt stuff
-
-	var b bytes.Buffer
-	if err := vcard.NewEncoder(&b).Encode(card); err != nil {
+	contactImport, err := formatCard(card)
+	if err != nil {
 		return nil, err
-	}
-
-	contactImport := &protonmail.ContactImport{
-		Cards: []*protonmail.ContactCard{
-			{Data: b.String()},
-		},
 	}
 
 	resps, err := ab.c.CreateContacts([]*protonmail.ContactImport{contactImport})
