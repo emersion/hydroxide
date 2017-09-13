@@ -3,34 +3,84 @@ package carddav
 import (
 	"bytes"
 	"errors"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/emersion/hydroxide/protonmail"
+	"golang.org/x/crypto/openpgp"
+
+	"log"
 )
 
 type contextKey string
 
 const ClientContextKey = contextKey("client")
 
-func formatCard(card vcard.Card) (*protonmail.ContactImport, error) {
-	// TODO: sign/encrypt stuff
+var (
+	cleartextCardProps = []string{vcard.FieldVersion, vcard.FieldProductID, "X-PM-LABEL", "X-PM-GROUP"}
+	signedCardProps = []string{vcard.FieldVersion, vcard.FieldProductID, vcard.FieldFormattedName, vcard.FieldUID, vcard.FieldEmail}
+)
 
-	var b bytes.Buffer
-	if err := vcard.NewEncoder(&b).Encode(card); err != nil {
-		return nil, err
+func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.ContactImport, error) {
+	vcard.ToV4(card)
+
+	// Add groups to emails
+	i := 1
+	for _, email := range card[vcard.FieldEmail] {
+		if email.Group == "" {
+			email.Group = strconv.Itoa(i)
+			i++
+		}
 	}
 
-	return &protonmail.ContactImport{
-		Cards: []*protonmail.ContactCard{
-			{Data: b.String()},
-		},
-	}, nil
+	toEncrypt := card
+	toSign := make(vcard.Card)
+	for _, k := range signedCardProps {
+		if fields, ok := toEncrypt[k]; ok {
+			toSign[k] = fields
+			if k != vcard.FieldVersion {
+				delete(toEncrypt, k)
+			}
+		}
+	}
+
+	var contactImport protonmail.ContactImport
+	var b bytes.Buffer
+
+	if len(toSign) > 0 {
+		if err := vcard.NewEncoder(&b).Encode(toSign); err != nil {
+			return nil, err
+		}
+		signed, err := protonmail.NewSignedContactCard(&b, privateKey)
+		if err != nil {
+			return nil, err
+		}
+		contactImport.Cards = append(contactImport.Cards, signed)
+		b.Reset()
+	}
+
+	if len(toEncrypt) > 0 {
+		if err := vcard.NewEncoder(&b).Encode(toEncrypt); err != nil {
+			return nil, err
+		}
+		to := []*openpgp.Entity{privateKey}
+		encrypted, err := protonmail.NewEncryptedContactCard(&b, to, privateKey)
+		if err != nil {
+			return nil, err
+		}
+		log.Println(encrypted)
+		contactImport.Cards = append(contactImport.Cards, encrypted)
+		b.Reset()
+	}
+
+	return &contactImport, nil
 }
 
 type addressFileInfo struct {
@@ -62,7 +112,7 @@ func (fi *addressFileInfo) Sys() interface{} {
 }
 
 type addressObject struct {
-	c       *protonmail.Client
+	ab *addressBook
 	contact *protonmail.Contact
 }
 
@@ -78,16 +128,22 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 	card := make(vcard.Card)
 
 	for _, c := range ao.contact.Cards {
-		if c.Type.Encrypted() {
-			// TODO: decrypt
-			continue
-		}
-		if c.Type.Signed() {
-			// TODO: check signature
+		md, err := c.Read(ao.ab.privateKeys)
+		if err != nil {
+			return nil, err
 		}
 
-		decoded, err := vcard.NewDecoder(strings.NewReader(c.Data)).Decode()
+		decoded, err := vcard.NewDecoder(md.UnverifiedBody).Decode()
 		if err != nil {
+			return nil, err
+		}
+
+		// The signature can be checked only if md.UnverifiedBody is consumed until
+		// EOF
+		if _, err := io.Copy(ioutil.Discard, md.UnverifiedBody); err != nil {
+			return nil, err
+		}
+		if err := md.SignatureError; err != nil {
 			return nil, err
 		}
 
@@ -102,12 +158,12 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 }
 
 func (ao *addressObject) SetCard(card vcard.Card) error {
-	contactImport, err := formatCard(card)
+	contactImport, err := formatCard(card, ao.ab.privateKeys[0])
 	if err != nil {
 		return err
 	}
 
-	contact, err := ao.c.UpdateContact(ao.contact.ID, contactImport)
+	contact, err := ao.ab.c.UpdateContact(ao.contact.ID, contactImport)
 	if err != nil {
 		return err
 	}
@@ -122,6 +178,7 @@ type addressBook struct {
 	cache  map[string]*addressObject
 	locker sync.Mutex
 	total  int
+	privateKeys openpgp.EntityList
 }
 
 func (ab *addressBook) Info() (*carddav.AddressBookInfo, error) {
@@ -177,7 +234,7 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 	for _, contact := range contacts {
 		if _, ok := ab.addressObject(contact.ID); !ok {
 			ab.cacheAddressObject(&addressObject{
-				c:       ab.c,
+				ab:       ab,
 				contact: contact,
 			})
 		}
@@ -200,7 +257,7 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 			ao, ok := ab.addressObject(contact.ID)
 			if !ok {
 				ao = &addressObject{
-					c:       ab.c,
+					ab:       ab,
 					contact: &protonmail.Contact{ID: contact.ID},
 				}
 				ab.cacheAddressObject(ao)
@@ -233,7 +290,7 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 	}
 
 	ao := &addressObject{
-		c:       ab.c,
+		ab:       ab,
 		contact: contact,
 	}
 	ab.cacheAddressObject(ao)
@@ -241,7 +298,7 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 }
 
 func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObject, error) {
-	contactImport, err := formatCard(card)
+	contactImport, err := formatCard(card, ab.privateKeys[0])
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +318,7 @@ func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObje
 	contact.Cards = contactImport.Cards // Not returned by the server
 
 	ao := &addressObject{
-		c:       ab.c,
+		ab:       ab,
 		contact: contact,
 	}
 	ab.cacheAddressObject(ao)
@@ -282,7 +339,7 @@ func (ab *addressBook) receiveEvents(events <-chan *protonmail.Event) {
 					fallthrough
 				case protonmail.EventUpdate:
 					ab.cache[eventContact.ID] = &addressObject{
-						c:       ab.c,
+						ab:       ab,
 						contact: eventContact.Contact,
 					}
 				case protonmail.EventDelete:
@@ -295,11 +352,16 @@ func (ab *addressBook) receiveEvents(events <-chan *protonmail.Event) {
 	}
 }
 
-func NewHandler(c *protonmail.Client, events <-chan *protonmail.Event) http.Handler {
+func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-chan *protonmail.Event) http.Handler {
+	if len(privateKeys) == 0 {
+		panic("hydroxide/carddav: no private key available")
+	}
+
 	ab := &addressBook{
 		c:     c,
 		cache: make(map[string]*addressObject),
 		total: -1,
+		privateKeys: privateKeys,
 	}
 
 	if events != nil {

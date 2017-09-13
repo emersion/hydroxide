@@ -18,6 +18,7 @@ import (
 	"github.com/emersion/hydroxide/protonmail"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/nacl/secretbox"
+	"golang.org/x/crypto/openpgp"
 )
 
 const authFile = "auth.json"
@@ -111,16 +112,15 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func authenticate(c *protonmail.Client, cachedAuth *cachedAuth) error {
+func authenticate(c *protonmail.Client, cachedAuth *cachedAuth) (openpgp.EntityList, error) {
 	auth, err := c.AuthRefresh(&cachedAuth.Auth)
 	if err != nil {
 		// TODO: handle expired token, re-authenticate
-		return err
+		return nil, err
 	}
 	cachedAuth.Auth = *auth
 
-	_, err = c.Unlock(auth, cachedAuth.MailboxPassword)
-	return err
+	return c.Unlock(auth, cachedAuth.MailboxPassword)
 }
 
 func receiveEvents(c *protonmail.Client, last string, ch chan<- *protonmail.Event) {
@@ -146,6 +146,7 @@ func receiveEvents(c *protonmail.Client, last string, ch chan<- *protonmail.Even
 type session struct {
 	h               http.Handler
 	hashedSecretKey []byte
+	privateKeys     openpgp.EntityList
 }
 
 func main() {
@@ -298,7 +299,8 @@ func main() {
 
 					// authenticate updates cachedAuth with the new refresh token
 					c := newClient()
-					if err := authenticate(c, &cachedAuth); err != nil {
+					privateKeys, err := authenticate(c, &cachedAuth)
+					if err != nil {
 						resp.WriteHeader(http.StatusInternalServerError)
 						log.Printf("Cannot authenticate %q: %v", username, err)
 						return
@@ -319,11 +321,12 @@ func main() {
 
 					events := make(chan *protonmail.Event)
 					go receiveEvents(c, cachedAuth.EventID, events)
-					h = carddav.NewHandler(c, events)
+					h = carddav.NewHandler(c, privateKeys, events)
 
 					sessions[username] = &session{
 						h:               h,
 						hashedSecretKey: hashed,
+						privateKeys:     privateKeys,
 					}
 				}
 
