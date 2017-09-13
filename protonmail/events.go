@@ -5,7 +5,7 @@ import (
 )
 
 type Event struct {
-	ID string `json:"EventID"`
+	ID      string `json:"EventID"`
 	Refresh int
 	//Messages
 	Contacts []*EventContact
@@ -30,8 +30,8 @@ const (
 )
 
 type EventContact struct {
-	ID string
-	Action EventAction
+	ID      string
+	Action  EventAction
 	Contact *Contact
 }
 

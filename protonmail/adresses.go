@@ -1,21 +1,21 @@
 package protonmail
 
 type (
-	AddressSend int
+	AddressSend   int
 	AddressStatus int
-	AddressType int
+	AddressType   int
 )
 
 type Address struct {
-	ID string
-	DomainID string
-	Email string
-	Send AddressSend
-	Receive int
-	Status AddressStatus
-	Type AddressType
+	ID          string
+	DomainID    string
+	Email       string
+	Send        AddressSend
+	Receive     int
+	Status      AddressStatus
+	Type        AddressType
 	DisplayName string
-	Signature string // HTML
-	HasKeys int
-	Keys []*Key
+	Signature   string // HTML
+	HasKeys     int
+	Keys        []*Key
 }
