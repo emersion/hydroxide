@@ -85,7 +85,7 @@ type addressFileInfo struct {
 }
 
 func (fi *addressFileInfo) Name() string {
-	return fi.contact.ID + ".vcf"
+	return fi.contact.ID
 }
 
 func (fi *addressFileInfo) Size() int64 {
