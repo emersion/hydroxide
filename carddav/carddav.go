@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emersion/hydroxide/protonmail"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
+	"github.com/emersion/hydroxide/protonmail"
 )
 
 type contextKey string
@@ -62,7 +62,7 @@ func (fi *addressFileInfo) Sys() interface{} {
 }
 
 type addressObject struct {
-	c *protonmail.Client
+	c       *protonmail.Client
 	contact *protonmail.Contact
 }
 
@@ -118,16 +118,16 @@ func (ao *addressObject) SetCard(card vcard.Card) error {
 }
 
 type addressBook struct {
-	c     *protonmail.Client
-	cache map[string]*addressObject
+	c      *protonmail.Client
+	cache  map[string]*addressObject
 	locker sync.Mutex
-	total int
+	total  int
 }
 
 func (ab *addressBook) Info() (*carddav.AddressBookInfo, error) {
 	return &carddav.AddressBookInfo{
-		Name: "ProtonMail",
-		Description: "ProtonMail contacts",
+		Name:            "ProtonMail",
+		Description:     "ProtonMail contacts",
 		MaxResourceSize: 100 * 1024,
 	}, nil
 }
@@ -177,7 +177,7 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 	for _, contact := range contacts {
 		if _, ok := ab.addressObject(contact.ID); !ok {
 			ab.cacheAddressObject(&addressObject{
-				c: ab.c,
+				c:       ab.c,
 				contact: contact,
 			})
 		}
@@ -200,7 +200,7 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 			ao, ok := ab.addressObject(contact.ID)
 			if !ok {
 				ao = &addressObject{
-					c: ab.c,
+					c:       ab.c,
 					contact: &protonmail.Contact{ID: contact.ID},
 				}
 				ab.cacheAddressObject(ao)
@@ -233,7 +233,7 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 	}
 
 	ao := &addressObject{
-		c: ab.c,
+		c:       ab.c,
 		contact: contact,
 	}
 	ab.cacheAddressObject(ao)
@@ -261,7 +261,7 @@ func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObje
 	contact.Cards = contactImport.Cards // Not returned by the server
 
 	ao := &addressObject{
-		c: ab.c,
+		c:       ab.c,
 		contact: contact,
 	}
 	ab.cacheAddressObject(ao)
@@ -282,7 +282,7 @@ func (ab *addressBook) receiveEvents(events <-chan *protonmail.Event) {
 					fallthrough
 				case protonmail.EventUpdate:
 					ab.cache[eventContact.ID] = &addressObject{
-						c: ab.c,
+						c:       ab.c,
 						contact: eventContact.Contact,
 					}
 				case protonmail.EventDelete:
@@ -297,7 +297,7 @@ func (ab *addressBook) receiveEvents(events <-chan *protonmail.Event) {
 
 func NewHandler(c *protonmail.Client, events <-chan *protonmail.Event) http.Handler {
 	ab := &addressBook{
-		c: c,
+		c:     c,
 		cache: make(map[string]*addressObject),
 		total: -1,
 	}

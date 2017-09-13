@@ -24,7 +24,7 @@ const authFile = "auth.json"
 
 type cachedAuth struct {
 	protonmail.Auth
-	LoginPassword string
+	LoginPassword   string
 	MailboxPassword string
 	// TODO: add padding
 }
@@ -144,7 +144,7 @@ func receiveEvents(c *protonmail.Client, last string, ch chan<- *protonmail.Even
 }
 
 type session struct {
-	h http.Handler
+	h               http.Handler
 	hashedSecretKey []byte
 }
 
@@ -236,7 +236,7 @@ func main() {
 		sessions := make(map[string]*session)
 
 		s := &http.Server{
-			Addr: "127.0.0.1:"+port,
+			Addr: "127.0.0.1:" + port,
 			Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 				resp.Header().Set("WWW-Authenticate", "Basic")
 
@@ -322,7 +322,7 @@ func main() {
 					h = carddav.NewHandler(c, events)
 
 					sessions[username] = &session{
-						h: h,
+						h:               h,
 						hashedSecretKey: hashed,
 					}
 				}
