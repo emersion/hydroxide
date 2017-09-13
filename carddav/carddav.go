@@ -25,7 +25,7 @@ const ClientContextKey = contextKey("client")
 
 var (
 	cleartextCardProps = []string{vcard.FieldVersion, vcard.FieldProductID, "X-PM-LABEL", "X-PM-GROUP"}
-	signedCardProps = []string{vcard.FieldVersion, vcard.FieldProductID, vcard.FieldFormattedName, vcard.FieldUID, vcard.FieldEmail}
+	signedCardProps    = []string{vcard.FieldVersion, vcard.FieldProductID, vcard.FieldFormattedName, vcard.FieldUID, vcard.FieldEmail}
 )
 
 func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.ContactImport, error) {
@@ -112,7 +112,7 @@ func (fi *addressFileInfo) Sys() interface{} {
 }
 
 type addressObject struct {
-	ab *addressBook
+	ab      *addressBook
 	contact *protonmail.Contact
 }
 
@@ -174,10 +174,10 @@ func (ao *addressObject) SetCard(card vcard.Card) error {
 }
 
 type addressBook struct {
-	c      *protonmail.Client
-	cache  map[string]*addressObject
-	locker sync.Mutex
-	total  int
+	c           *protonmail.Client
+	cache       map[string]*addressObject
+	locker      sync.Mutex
+	total       int
 	privateKeys openpgp.EntityList
 }
 
@@ -234,7 +234,7 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 	for _, contact := range contacts {
 		if _, ok := ab.addressObject(contact.ID); !ok {
 			ab.cacheAddressObject(&addressObject{
-				ab:       ab,
+				ab:      ab,
 				contact: contact,
 			})
 		}
@@ -257,7 +257,7 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 			ao, ok := ab.addressObject(contact.ID)
 			if !ok {
 				ao = &addressObject{
-					ab:       ab,
+					ab:      ab,
 					contact: &protonmail.Contact{ID: contact.ID},
 				}
 				ab.cacheAddressObject(ao)
@@ -290,7 +290,7 @@ func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error
 	}
 
 	ao := &addressObject{
-		ab:       ab,
+		ab:      ab,
 		contact: contact,
 	}
 	ab.cacheAddressObject(ao)
@@ -318,7 +318,7 @@ func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObje
 	contact.Cards = contactImport.Cards // Not returned by the server
 
 	ao := &addressObject{
-		ab:       ab,
+		ab:      ab,
 		contact: contact,
 	}
 	ab.cacheAddressObject(ao)
@@ -339,7 +339,7 @@ func (ab *addressBook) receiveEvents(events <-chan *protonmail.Event) {
 					fallthrough
 				case protonmail.EventUpdate:
 					ab.cache[eventContact.ID] = &addressObject{
-						ab:       ab,
+						ab:      ab,
 						contact: eventContact.Contact,
 					}
 				case protonmail.EventDelete:
@@ -358,9 +358,9 @@ func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-c
 	}
 
 	ab := &addressBook{
-		c:     c,
-		cache: make(map[string]*addressObject),
-		total: -1,
+		c:           c,
+		cache:       make(map[string]*addressObject),
+		total:       -1,
 		privateKeys: privateKeys,
 	}
 
