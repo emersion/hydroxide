@@ -149,6 +149,33 @@ func entityPrimaryKey(e *openpgp.Entity) *openpgp.Key {
 	return &openpgp.Key{e, e.PrimaryKey, e.PrivateKey, selfSig}
 }
 
+type detachedSignatureReader struct {
+	md *openpgp.MessageDetails
+	body io.Reader
+	signed bytes.Buffer
+	signature io.Reader
+	keyring openpgp.KeyRing
+	eof bool
+}
+
+func (r *detachedSignatureReader) Read(p []byte) (n int, err error) {
+	// TODO: check signature and decrypt at the same time
+
+	n, err = r.body.Read(p)
+	if err == io.EOF && !r.eof {
+		// Check signature
+		signer, signatureError := openpgp.CheckArmoredDetachedSignature(r.keyring, &r.signed, r.signature)
+		r.md.IsSigned = true
+		r.md.SignatureError = signatureError
+		if signer != nil {
+			r.md.SignedByKeyId = signer.PrimaryKey.KeyId
+			r.md.SignedBy = entityPrimaryKey(signer)
+		}
+		r.eof = true
+	}
+	return
+}
+
 func (card *ContactCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails, error) {
 	if !card.Type.Encrypted() {
 		md := &openpgp.MessageDetails{
@@ -178,17 +205,23 @@ func (card *ContactCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails,
 		return nil, err
 	}
 
-	var r io.Reader = ciphertextBlock.Body
-
-	if card.Type.Signed() {
-		sigBlock, err := armor.Decode(strings.NewReader(card.Signature))
-		if err != nil {
-			return nil, err
-		}
-		r = io.MultiReader(r, sigBlock.Body)
+	md, err := openpgp.ReadMessage(ciphertextBlock.Body, keyring, nil, nil)
+	if err != nil {
+		return nil, err
 	}
 
-	return openpgp.ReadMessage(r, keyring, nil, nil)
+	if card.Type.Signed() {
+		r := &detachedSignatureReader{
+			md: md,
+			signature: strings.NewReader(card.Signature),
+			keyring: keyring,
+		}
+		r.body = io.TeeReader(md.UnverifiedBody, &r.signed)
+
+		md.UnverifiedBody = r
+	}
+
+	return md, nil
 }
 
 type ContactExport struct {

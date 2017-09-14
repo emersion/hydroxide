@@ -33,7 +33,7 @@ func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.Contac
 	i := 1
 	for _, email := range card[vcard.FieldEmail] {
 		if email.Group == "" {
-			email.Group = strconv.Itoa(i)
+			email.Group = "item" + strconv.Itoa(i)
 			i++
 		}
 	}
