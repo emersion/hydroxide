@@ -170,6 +170,18 @@ func (ao *addressObject) SetCard(card vcard.Card) error {
 	return nil
 }
 
+func (ao *addressObject) Remove() error {
+	resps, err := ao.ab.c.DeleteContacts([]string{ao.contact.ID})
+	if err != nil {
+		return err
+	}
+	if len(resps) != 1 {
+		return errors.New("hydroxide/carddav: expected exactly one response when deleting contact")
+	}
+	resp := resps[0]
+	return resp.Err()
+}
+
 type addressBook struct {
 	c           *protonmail.Client
 	cache       map[string]*addressObject
