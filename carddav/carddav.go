@@ -137,9 +137,7 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 
 		// The signature can be checked only if md.UnverifiedBody is consumed until
 		// EOF
-		if _, err := io.Copy(ioutil.Discard, md.UnverifiedBody); err != nil {
-			return nil, err
-		}
+		io.Copy(ioutil.Discard, md.UnverifiedBody)
 		if err := md.SignatureError; err != nil {
 			return nil, err
 		}
