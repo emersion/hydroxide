@@ -1,6 +1,7 @@
 # hydroxide
 
-A third-party, open-source ProtonMail CardDAV bridge.
+A third-party, open-source ProtonMail CardDAV bridge. For power users only,
+designed to run on a server.
 
 ## Usage
 
