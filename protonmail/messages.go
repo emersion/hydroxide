@@ -17,35 +17,35 @@ type MessageEncryption int
 
 type MessageAddress struct {
 	Address string
-	Name string
+	Name    string
 }
 
 type Message struct {
-	ID string
-	Order int64
-	Subject string
-	IsRead int
-	Type MessageType
-	Sender *MessageAddress
-	ReplyTo *MessageAddress
-	ToList []*MessageAddress
-	Time int64
-	Size int64
-	IsEncrypted MessageEncryption
+	ID             string
+	Order          int64
+	Subject        string
+	IsRead         int
+	Type           MessageType
+	Sender         *MessageAddress
+	ReplyTo        *MessageAddress
+	ToList         []*MessageAddress
+	Time           int64
+	Size           int64
+	IsEncrypted    MessageEncryption
 	ExpirationTime int64
-	IsReplied int
-	IsRepliedAll int
-	IsForwarded int
-	SpamScore int
-	AddressID string
-	Body string
-	MIMEType string
-	CCList []*MessageAddress
-	BCCList []*MessageAddress
-	Header string
-	Attachments []*Attachment
-	LabelIDs []string
-	ExternalID string
+	IsReplied      int
+	IsRepliedAll   int
+	IsForwarded    int
+	SpamScore      int
+	AddressID      string
+	Body           string
+	MIMEType       string
+	CCList         []*MessageAddress
+	BCCList        []*MessageAddress
+	Header         string
+	Attachments    []*Attachment
+	LabelIDs       []string
+	ExternalID     string
 }
 
 func (c *Client) GetMessage(id string) (*Message, error) {
@@ -67,9 +67,9 @@ func (c *Client) GetMessage(id string) (*Message, error) {
 
 func (c *Client) CreateDraftMessage(msg *Message, parentID string) (*Message, error) {
 	reqData := struct {
-		Message *Message
+		Message  *Message
 		ParentID string `json:",omitempty"`
-		Action *int `json:",omitempty"`
+		Action   *int   `json:",omitempty"`
 	}{msg, parentID, nil}
 	req, err := c.newJSONRequest(http.MethodPost, "/messages", &reqData)
 	if err != nil {
@@ -108,30 +108,30 @@ func (c *Client) UpdateDraftMessage(msg *Message) (*Message, error) {
 }
 
 type MessageKeyPacket struct {
-	ID string
+	ID         string
 	KeyPackets string
 }
 
 type MessagePackageType int
 
 type MessagePackage struct {
-	Address string
-	Type MessagePackageType
-	Body string
+	Address    string
+	Type       MessagePackageType
+	Body       string
 	KeyPackets []*MessageKeyPacket
 
-	Token string
-	EncToken string
+	Token        string
+	EncToken     string
 	PasswordHint string `json:",omitempty"`
 }
 
 type MessageOutgoing struct {
 	ID string
 
-	ClearBody string
+	ClearBody      string
 	ExpirationTime int64
 	AttachmentKeys []*AttachmentKey
-	Packages []*MessagePackage
+	Packages       []*MessagePackage
 }
 
 func (c *Client) SendMessage(msg *MessageOutgoing) (sent, parent *Message, err error) {

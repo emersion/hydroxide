@@ -150,12 +150,12 @@ func entityPrimaryKey(e *openpgp.Entity) *openpgp.Key {
 }
 
 type detachedSignatureReader struct {
-	md *openpgp.MessageDetails
-	body io.Reader
-	signed bytes.Buffer
+	md        *openpgp.MessageDetails
+	body      io.Reader
+	signed    bytes.Buffer
 	signature io.Reader
-	keyring openpgp.KeyRing
-	eof bool
+	keyring   openpgp.KeyRing
+	eof       bool
 }
 
 func (r *detachedSignatureReader) Read(p []byte) (n int, err error) {
@@ -212,9 +212,9 @@ func (card *ContactCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails,
 
 	if card.Type.Signed() {
 		r := &detachedSignatureReader{
-			md: md,
+			md:        md,
 			signature: strings.NewReader(card.Signature),
-			keyring: keyring,
+			keyring:   keyring,
 		}
 		r.body = io.TeeReader(md.UnverifiedBody, &r.signed)
 
