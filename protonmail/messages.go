@@ -1,7 +1,13 @@
 package protonmail
 
 import (
+	"bytes"
+	"io"
 	"net/http"
+	"strings"
+
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/armor"
 )
 
 type MessageType int
@@ -14,6 +20,20 @@ const (
 )
 
 type MessageEncryption int
+
+const (
+	MessageUnencrypted MessageEncryption = iota
+	MessageEncryptedInternal
+	MessageEncryptedExternal
+	MessageEncryptedOutside
+	_
+	_
+	_
+	MessageEncryptedInlinePGP
+	MessageEncryptedPGPMIME
+	_
+	_
+)
 
 type MessageAddress struct {
 	Address string
@@ -48,6 +68,66 @@ type Message struct {
 	ExternalID     string
 }
 
+func (msg *Message) Read(keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
+	switch msg.IsEncrypted {
+	case MessageUnencrypted:
+		return &openpgp.MessageDetails{
+			IsEncrypted:    false,
+			IsSigned:       false,
+			UnverifiedBody: strings.NewReader(msg.Body),
+		}, nil
+	default:
+		block, err := armor.Decode(strings.NewReader(msg.Body))
+		if err != nil {
+			return nil, err
+		}
+
+		return openpgp.ReadMessage(block.Body, keyring, prompt, nil)
+	}
+}
+
+type messageWriter struct {
+	plaintext  io.WriteCloser
+	ciphertext io.WriteCloser
+	b          *bytes.Buffer
+	msg        *Message
+}
+
+func (w *messageWriter) Write(p []byte) (n int, err error) {
+	return w.plaintext.Write(p)
+}
+
+func (w *messageWriter) Close() error {
+	if err := w.plaintext.Close(); err != nil {
+		return err
+	}
+	if err := w.ciphertext.Close(); err != nil {
+		return err
+	}
+	w.msg.Body = w.b.String()
+	return nil
+}
+
+func (msg *Message) Encrypt(to []*openpgp.Entity, signed *openpgp.Entity) (plaintext io.WriteCloser, err error) {
+	var b bytes.Buffer
+	ciphertext, err := armor.Encode(&b, "PGP MESSAGE", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	plaintext, err = openpgp.Encrypt(ciphertext, to, signed, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return &messageWriter{
+		plaintext:  plaintext,
+		ciphertext: ciphertext,
+		b:          &b,
+		msg:        msg,
+	}, nil
+}
+
 func (c *Client) GetMessage(id string) (*Message, error) {
 	req, err := c.newRequest(http.MethodGet, "/messages/"+id, nil)
 	if err != nil {
@@ -65,6 +145,8 @@ func (c *Client) GetMessage(id string) (*Message, error) {
 	return respData.Message, nil
 }
 
+// CreateDraftMessage creates a new draft message. ToList, CCList, BCCList,
+// Subject, Body and AddressID are required in msg.
 func (c *Client) CreateDraftMessage(msg *Message, parentID string) (*Message, error) {
 	reqData := struct {
 		Message  *Message

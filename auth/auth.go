@@ -8,10 +8,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/emersion/hydroxide/protonmail"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/openpgp"
+
+	"github.com/emersion/hydroxide/protonmail"
 )
 
 const authFile = "auth.json"
