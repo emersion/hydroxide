@@ -9,13 +9,24 @@ import (
 	"golang.org/x/crypto/openpgp"
 )
 
-type Key struct {
+type PrivateKey struct {
 	ID          string
 	Version     int
 	PublicKey   string
 	PrivateKey  string
 	Fingerprint string
 	Activation  interface{} // TODO
+}
+
+func (priv *PrivateKey) Entity() (*openpgp.Entity, error) {
+	keyRing, err := openpgp.ReadArmoredKeyRing(strings.NewReader(priv.PrivateKey))
+	if err != nil {
+		return nil, err
+	}
+	if len(keyRing) == 0 {
+		return nil, errors.New("private key is empty")
+	}
+	return keyRing[0], nil
 }
 
 type RecipientType int

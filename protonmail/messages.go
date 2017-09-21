@@ -196,6 +196,15 @@ type MessageKeyPacket struct {
 
 type MessagePackageType int
 
+const (
+	MessagePackageInternal         MessagePackageType = 1
+	MessagePackageEncryptedOutside                    = 2
+	MessagePackageClear                               = 4
+	MessagePackageInlinePGP                           = 8
+	MessagePackagePGPMIME                             = 16
+	MessagePackageMIME                                = 32
+)
+
 type MessagePackage struct {
 	Address    string
 	Type       MessagePackageType
@@ -210,10 +219,14 @@ type MessagePackage struct {
 type MessageOutgoing struct {
 	ID string
 
+	// Only if there's a recipient without a public key
 	ClearBody      string
-	ExpirationTime int64
 	AttachmentKeys []*AttachmentKey
-	Packages       []*MessagePackage
+
+	// Only if message expires
+	ExpirationTime int // duration in seconds
+
+	Packages []*MessagePackage
 }
 
 func (c *Client) SendMessage(msg *MessageOutgoing) (sent, parent *Message, err error) {

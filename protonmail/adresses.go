@@ -6,6 +6,23 @@ type (
 	AddressType   int
 )
 
+const (
+	AddressSendDisabled AddressSend = iota
+	AddressSendPrimary
+	AddressSendSecondary
+)
+
+const (
+	AddressDisabled AddressStatus = iota
+	AddressEnabled
+)
+
+const (
+	AddressOriginal AddressType = iota
+	AddressAlias
+	AddressCustom
+)
+
 type Address struct {
 	ID          string
 	DomainID    string
@@ -17,5 +34,5 @@ type Address struct {
 	DisplayName string
 	Signature   string // HTML
 	HasKeys     int
-	Keys        []*Key
+	Keys        []*PrivateKey
 }

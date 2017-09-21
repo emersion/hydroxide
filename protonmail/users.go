@@ -61,7 +61,7 @@ type User struct {
 	VPN                interface{} // TODO
 	Delinquent         int
 	Addresses          []*Address
-	Keys               []*Key
+	Keys               []*PrivateKey
 }
 
 func (c *Client) GetCurrentUser() (*User, error) {
