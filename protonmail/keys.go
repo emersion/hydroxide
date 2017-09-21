@@ -58,8 +58,7 @@ func (pub *PublicKey) Entity() (*openpgp.Entity, error) {
 	return keyRing[0], nil
 }
 
-// GetPublicKeys retrieves public keys for a user. The first key in
-// PublicKeyResp.Keys can be used for sending.
+// GetPublicKeys retrieves public keys for a user.
 func (c *Client) GetPublicKeys(email string) (*PublicKeyResp, error) {
 	v := url.Values{}
 	v.Set("Email", email)
