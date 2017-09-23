@@ -2,12 +2,16 @@ package protonmail
 
 import (
 	"bytes"
+	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/armor"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 type MessageType int
@@ -199,37 +203,187 @@ type MessagePackageType int
 const (
 	MessagePackageInternal         MessagePackageType = 1
 	MessagePackageEncryptedOutside                    = 2
-	MessagePackageClear                               = 4
+	MessagePackageCleartext                           = 4
 	MessagePackageInlinePGP                           = 8
 	MessagePackagePGPMIME                             = 16
 	MessagePackageMIME                                = 32
 )
 
-type MessagePackage struct {
-	Address    string
-	Type       MessagePackageType
-	Body       string
-	KeyPackets []*MessageKeyPacket
+// From https://github.com/ProtonMail/Angular/blob/v3/src/app/composer/controllers/composeMessage.js#L656
 
-	Token        string
-	EncToken     string
-	PasswordHint string `json:",omitempty"`
+type MessagePackage struct {
+	Type MessagePackageType
+
+	BodyKeyPacket string
+	AttachmentKeyPackets map[string]string
+	Signature int
+
+	// Only if encrypted for outside
+	PasswordHint string
+	Auth interface{} // TODO
+	Token string
+	EncToken string
 }
 
-type MessageOutgoing struct {
+type MessagePackageSet struct {
+	Type MessagePackageType // OR of each Type
+	Addresses map[string]*MessagePackage
+	MIMEType string
+	Body string // Body data packet
+
+	// Only if cleartext is sent
+	BodyKey string
+	AttachmentKeys map[string]string
+
+	bodyKey *packet.EncryptedKey
+	attachmentKeys map[string]*packet.EncryptedKey
+}
+
+func NewMessagePackageSet(attachmentKeys map[string]*packet.EncryptedKey) *MessagePackageSet {
+	return &MessagePackageSet{
+		attachmentKeys: attachmentKeys,
+	}
+}
+
+func (set *MessagePackageSet) generateBodyKey(cipher packet.CipherFunction, config *packet.Config) error {
+	symKey := make([]byte, cipher.KeySize())
+	if _, err := io.ReadFull(config.Random(), symKey); err != nil {
+		return err
+	}
+
+	set.bodyKey = &packet.EncryptedKey{
+		CipherFunc: cipher,
+		Key: symKey,
+	}
+	return nil
+}
+
+type outgoingMessageWriter struct {
+	cleartext io.WriteCloser
+	ciphertext io.WriteCloser
+	armored *bytes.Buffer
+	set *MessagePackageSet
+}
+
+func (w *outgoingMessageWriter) Write(p []byte) (int, error) {
+	return w.cleartext.Write(p)
+}
+
+func (w *outgoingMessageWriter) Close() error {
+	if err := w.cleartext.Close(); err != nil {
+		return err
+	}
+	if err := w.ciphertext.Close(); err != nil {
+		return err
+	}
+	w.set.Body = w.armored.String()
+	w.armored = nil
+	return nil
+}
+
+func (set *MessagePackageSet) Encrypt() (io.WriteCloser, error) {
+	config := &packet.Config{}
+
+	if err := set.generateBodyKey(packet.CipherAES256, config); err != nil {
+		return nil, err
+	}
+
+	var armored bytes.Buffer
+	ciphertext, err := armor.Encode(&armored, "PGP MESSAGE", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, set.bodyKey.CipherFunc, set.bodyKey.Key, config)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: sign, see https://github.com/golang/crypto/blob/master/openpgp/write.go#L287
+
+	literalData, err := packet.SerializeLiteral(encryptedData, false, "", 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return &outgoingMessageWriter{
+		cleartext: literalData,
+		ciphertext: ciphertext,
+		armored: &armored,
+		set: set,
+	}, nil
+}
+
+func (set *MessagePackageSet) AddCleartext(addr string) error {
+	set.Addresses[addr] = &MessagePackage{Type: MessagePackageCleartext}
+
+	if set.BodyKey == "" || set.AttachmentKeys == nil {
+		set.BodyKey = base64.StdEncoding.EncodeToString(set.bodyKey.Key)
+
+		set.AttachmentKeys = make(map[string]string, len(set.attachmentKeys))
+		for att, key := range set.attachmentKeys {
+			set.AttachmentKeys[att] = base64.StdEncoding.EncodeToString(key.Key)
+		}
+	}
+
+	return nil
+}
+
+func serializeEncryptedKey(symKey *packet.EncryptedKey, pub *packet.PublicKey, config *packet.Config) (string, error) {
+	var armored bytes.Buffer
+	ciphertext, err := armor.Encode(&armored, "PGP MESSAGE", nil)
+	if err != nil {
+		return "", err
+	}
+
+	err = packet.SerializeEncryptedKey(ciphertext, pub, symKey.CipherFunc, symKey.Key, config)
+	if err != nil {
+		return "", err
+	}
+
+	return armored.String(), nil
+}
+
+func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) error {
+	config := &packet.Config{}
+
+	encKey, ok := encryptionKey(pub, config.Now())
+	if !ok {
+		return errors.New("cannot encrypt a message to key id " + strconv.FormatUint(pub.PrimaryKey.KeyId, 16) + " because it has no encryption keys")
+	}
+
+	bodyKey, err := serializeEncryptedKey(set.bodyKey, encKey.PublicKey, config)
+	if err != nil {
+		return err
+	}
+
+	attachmentKeys := make(map[string]string, len(set.attachmentKeys))
+	for att, key := range set.attachmentKeys {
+		attKey, err := serializeEncryptedKey(key, encKey.PublicKey, config)
+		if err != nil {
+			return err
+		}
+		attachmentKeys[att] = attKey
+	}
+
+	set.Addresses[addr] = &MessagePackage{
+		Type: MessagePackageInternal,
+		BodyKeyPacket: bodyKey,
+		AttachmentKeyPackets: attachmentKeys,
+	}
+	return nil
+}
+
+type OutgoingMessage struct {
 	ID string
 
-	// Only if there's a recipient without a public key
-	ClearBody      string
-	AttachmentKeys []*AttachmentKey
-
 	// Only if message expires
-	ExpirationTime int // duration in seconds
+	ExpirationTime int // Duration in seconds
 
-	Packages []*MessagePackage
+	Packages []*MessagePackageSet
 }
 
-func (c *Client) SendMessage(msg *MessageOutgoing) (sent, parent *Message, err error) {
+func (c *Client) SendMessage(msg *OutgoingMessage) (sent, parent *Message, err error) {
 	req, err := c.newJSONRequest(http.MethodPut, "/messages/"+msg.ID, msg)
 	if err != nil {
 		return nil, nil, err
