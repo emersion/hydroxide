@@ -166,8 +166,15 @@ func (m *Manager) Auth(username, password string) (*protonmail.Client, openpgp.E
 			return nil, nil, err
 		}
 
-		// authenticate updates cachedAuth with the new refresh token
 		c := m.newClient()
+		c.ReAuth = func() error {
+			if _, err := authenticate(c, &cachedAuth); err != nil {
+				return err
+			}
+			return EncryptAndSave(&cachedAuth, username, &secretKey)
+		}
+
+		// authenticate updates cachedAuth with the new refresh token
 		privateKeys, err := authenticate(c, &cachedAuth)
 		if err != nil {
 			return nil, nil, err
