@@ -71,6 +71,26 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	if fromAddr == nil {
 		return errors.New("unknown sender address")
 	}
+	if len(fromAddr.Keys) == 0 {
+		return errors.New("sender address has no private key")
+	}
+
+	// TODO: get appropriate private key
+	encryptedPrivateKey, err := fromAddr.Keys[0].Entity()
+	if err != nil {
+		return fmt.Errorf("cannot parse sender private key: %v", err)
+	}
+
+	var privateKey *openpgp.Entity
+	for _, e := range u.privateKeys {
+		if e.PrimaryKey.KeyId == encryptedPrivateKey.PrimaryKey.KeyId {
+			privateKey = e
+			break
+		}
+	}
+	if privateKey == nil {
+		return errors.New("sender address key hasn't been decrypted")
+	}
 
 	msg := &protonmail.Message{
 		ToList:    toPMAddressList(toList),
@@ -119,7 +139,6 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 
 	msg.MIMEType = bodyType
 
-	privateKey := u.privateKeys[0]
 	plaintext, err := msg.Encrypt([]*openpgp.Entity{privateKey}, privateKey)
 	if err != nil {
 		return err
@@ -222,6 +241,8 @@ func (be *backend) Login(username, password string) (smtp.User, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO: decrypt private keys in u.Addresses
 
 	return &user{c, u, privateKeys}, nil
 }
