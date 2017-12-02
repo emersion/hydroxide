@@ -241,6 +241,7 @@ type MessagePackageSet struct {
 
 func NewMessagePackageSet(attachmentKeys map[string]*packet.EncryptedKey) *MessagePackageSet {
 	return &MessagePackageSet{
+		Addresses: make(map[string]*MessagePackage),
 		attachmentKeys: attachmentKeys,
 	}
 }
@@ -261,7 +262,7 @@ func (set *MessagePackageSet) generateBodyKey(cipher packet.CipherFunction, conf
 type outgoingMessageWriter struct {
 	cleartext io.WriteCloser
 	ciphertext io.WriteCloser
-	armored *bytes.Buffer
+	encoded *bytes.Buffer
 	set *MessagePackageSet
 }
 
@@ -276,23 +277,22 @@ func (w *outgoingMessageWriter) Close() error {
 	if err := w.ciphertext.Close(); err != nil {
 		return err
 	}
-	w.set.Body = w.armored.String()
-	w.armored = nil
+	w.set.Body = w.encoded.String()
+	w.encoded = nil
 	return nil
 }
 
-func (set *MessagePackageSet) Encrypt() (io.WriteCloser, error) {
+func (set *MessagePackageSet) Encrypt(mimeType string) (io.WriteCloser, error) {
+	set.MIMEType = mimeType
+
 	config := &packet.Config{}
 
 	if err := set.generateBodyKey(packet.CipherAES256, config); err != nil {
 		return nil, err
 	}
 
-	var armored bytes.Buffer
-	ciphertext, err := armor.Encode(&armored, "PGP MESSAGE", nil)
-	if err != nil {
-		return nil, err
-	}
+	var encoded bytes.Buffer
+	ciphertext := base64.NewEncoder(base64.StdEncoding, &encoded)
 
 	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, set.bodyKey.CipherFunc, set.bodyKey.Key, config)
 	if err != nil {
@@ -309,13 +309,14 @@ func (set *MessagePackageSet) Encrypt() (io.WriteCloser, error) {
 	return &outgoingMessageWriter{
 		cleartext: literalData,
 		ciphertext: ciphertext,
-		armored: &armored,
+		encoded: &encoded,
 		set: set,
 	}, nil
 }
 
 func (set *MessagePackageSet) AddCleartext(addr string) error {
 	set.Addresses[addr] = &MessagePackage{Type: MessagePackageCleartext}
+	set.Type |= MessagePackageCleartext
 
 	if set.BodyKey == "" || set.AttachmentKeys == nil {
 		set.BodyKey = base64.StdEncoding.EncodeToString(set.bodyKey.Key)
@@ -366,6 +367,7 @@ func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) erro
 		attachmentKeys[att] = attKey
 	}
 
+	set.Type |= MessagePackageInternal
 	set.Addresses[addr] = &MessagePackage{
 		Type: MessagePackageInternal,
 		BodyKeyPacket: bodyKey,
@@ -384,7 +386,7 @@ type OutgoingMessage struct {
 }
 
 func (c *Client) SendMessage(msg *OutgoingMessage) (sent, parent *Message, err error) {
-	req, err := c.newJSONRequest(http.MethodPut, "/messages/"+msg.ID, msg)
+	req, err := c.newJSONRequest(http.MethodPost, "/messages/send/"+msg.ID, msg)
 	if err != nil {
 		return nil, nil, err
 	}

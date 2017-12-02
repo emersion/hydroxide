@@ -12,7 +12,7 @@ You must setup an HTTPS reverse proxy to forward requests to `hydroxide`.
 ```shell
 go get github.com/emersion/hydroxide
 hydroxide auth <username>
-hydroxide
+hydroxide carddav
 ```
 
 Tested on GNOME (Evolution) and Android (DAVDroid).
