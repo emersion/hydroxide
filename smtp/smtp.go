@@ -310,6 +310,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 
 func (u *user) Logout() error {
 	u.c = nil
+	u.u = nil
 	u.privateKeys = nil
 	return nil
 }

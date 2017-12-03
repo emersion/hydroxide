@@ -10,12 +10,14 @@ import (
 	"os"
 	"time"
 
+	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-smtp"
 	"github.com/howeyc/gopass"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/protonmail"
+	imapbackend "github.com/emersion/hydroxide/imap"
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
 
@@ -135,7 +137,7 @@ func main() {
 	case "smtp":
 		port := os.Getenv("PORT")
 		if port == "" {
-			port = "1465"
+			port = "1025"
 		}
 
 		sessions := auth.NewManager(newClient)
@@ -147,6 +149,21 @@ func main() {
 		s.AllowInsecureAuth = true // TODO: remove this
 
 		log.Println("Starting SMTP server at", s.Addr)
+		log.Fatal(s.ListenAndServe())
+	case "imap":
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "1143"
+		}
+
+		sessions := auth.NewManager(newClient)
+
+		be := imapbackend.New(sessions)
+		s := imapserver.New(be)
+		s.Addr = "127.0.0.1:" + port
+		s.AllowInsecureAuth = true // TODO: remove this
+
+		log.Println("Starting IMAP server at", s.Addr)
 		log.Fatal(s.ListenAndServe())
 	case "carddav":
 		port := os.Getenv("PORT")
