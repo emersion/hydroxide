@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"github.com/howeyc/gopass"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
@@ -53,7 +54,6 @@ func main() {
 	switch flag.Arg(0) {
 	case "auth":
 		username := flag.Arg(1)
-		scanner := bufio.NewScanner(os.Stdin)
 
 		c := newClient()
 
@@ -70,8 +70,11 @@ func main() {
 		var loginPassword string
 		if a == nil {
 			fmt.Printf("Password: ")
-			scanner.Scan()
-			loginPassword = scanner.Text()
+			if pass, err := gopass.GetPasswd(); err != nil {
+				log.Fatal(err)
+			} else {
+				loginPassword = string(pass)
+			}
 
 			authInfo, err := c.AuthInfo(username)
 			if err != nil {
@@ -80,6 +83,7 @@ func main() {
 
 			var twoFactorCode string
 			if authInfo.TwoFactor == 1 {
+				scanner := bufio.NewScanner(os.Stdin)
 				fmt.Printf("2FA code: ")
 				scanner.Scan()
 				twoFactorCode = scanner.Text()
@@ -101,8 +105,11 @@ func main() {
 			} else {
 				fmt.Printf("Password: ")
 			}
-			scanner.Scan()
-			mailboxPassword = scanner.Text()
+			if pass, err := gopass.GetPasswd(); err != nil {
+				log.Fatal(err)
+			} else {
+				mailboxPassword = string(pass)
+			}
 		}
 
 		_, err := c.Unlock(a, mailboxPassword)
