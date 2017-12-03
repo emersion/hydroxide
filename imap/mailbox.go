@@ -6,8 +6,12 @@ import (
 	"github.com/emersion/go-imap"
 )
 
+const delimiter = "/"
+
 type mailbox struct {
 	name string
+	label string
+	flags []string
 }
 
 func (mbox *mailbox) Name() string {
@@ -15,11 +19,35 @@ func (mbox *mailbox) Name() string {
 }
 
 func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
-	return nil, errNotYetImplemented // TODO
+	return &imap.MailboxInfo{
+		Attributes: append(mbox.flags, imap.NoInferiorsAttr),
+		Delimiter: delimiter,
+		Name: mbox.name,
+	}, nil
 }
 
 func (mbox *mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error) {
-	return nil, errNotYetImplemented // TODO
+	status := imap.NewMailboxStatus(mbox.name, items)
+	status.Flags = mbox.flags
+	status.PermanentFlags = []string{imap.SeenFlag, imap.AnsweredFlag, imap.FlaggedFlag, imap.DeletedFlag, imap.DraftFlag}
+	status.UnseenSeqNum = 0 // TODO
+
+	for _, name := range items {
+		switch name {
+		case imap.StatusMessages:
+			status.Messages = 0 // TODO
+		case imap.StatusUidNext:
+			status.UidNext = 1 // TODO
+		case imap.StatusUidValidity:
+			status.UidValidity = 1
+		case imap.StatusRecent:
+			status.Recent = 0 // TODO
+		case imap.StatusUnseen:
+			status.Unseen = 0 // TODO
+		}
+	}
+
+	return status, nil
 }
 
 func (mbox *mailbox) SetSubscribed(subscribed bool) error {

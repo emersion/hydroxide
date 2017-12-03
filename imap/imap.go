@@ -27,12 +27,7 @@ func (be *backend) Login(username, password string) (imapbackend.User, error) {
 
 	// TODO: decrypt private keys in u.Addresses
 
-	return &user{
-		username: username,
-		c: c,
-		u: u,
-		privateKeys: privateKeys,
-	}, nil
+	return newUser(c, u, privateKeys)
 }
 
 func New(sessions *auth.Manager) imapbackend.Backend {

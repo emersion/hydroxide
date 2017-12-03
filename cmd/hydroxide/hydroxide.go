@@ -11,6 +11,7 @@ import (
 	"time"
 
 	imapserver "github.com/emersion/go-imap/server"
+	imapspacialuse "github.com/emersion/go-imap-specialuse"
 	"github.com/emersion/go-smtp"
 	"github.com/howeyc/gopass"
 
@@ -162,6 +163,7 @@ func main() {
 		s := imapserver.New(be)
 		s.Addr = "127.0.0.1:" + port
 		s.AllowInsecureAuth = true // TODO: remove this
+		s.Enable(imapspacialuse.NewExtension())
 
 		log.Println("Starting IMAP server at", s.Addr)
 		log.Fatal(s.ListenAndServe())
