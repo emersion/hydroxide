@@ -101,8 +101,24 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		AddressID: fromAddr.ID,
 	}
 
+	// Create an empty draft
+	plaintext, err := msg.Encrypt([]*openpgp.Entity{privateKey}, privateKey)
+	if err != nil {
+		return err
+	}
+	if err := plaintext.Close(); err != nil {
+		return err
+	}
+
+	// TODO: parentID from In-Reply-To
+	msg, err = u.c.CreateDraftMessage(msg, "")
+	if err != nil {
+		return fmt.Errorf("cannot create draft message: %v", err)
+	}
+
 	var body *bytes.Buffer
 	var bodyType string
+	var attachments []*protonmail.Attachment
 
 	for {
 		p, err := mr.NextPart()
@@ -129,7 +145,42 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 				return err
 			}
 		case mail.AttachmentHeader:
-			// TODO
+			t, _, err := h.ContentType()
+			if err != nil {
+				break
+			}
+
+			filename, err := h.Filename()
+			if err != nil {
+				break
+			}
+
+			att := &protonmail.Attachment{
+				MessageID: msg.ID,
+				Name:      filename,
+				MIMEType:  t,
+				ContentID: h.Get("Content-Id"),
+				// TODO: Header
+			}
+
+			var b bytes.Buffer
+			cleartext, err := att.Encrypt(&b, []*openpgp.Entity{privateKey}, privateKey)
+			if err != nil {
+				return fmt.Errorf("cannot encrypt attachment: %v", err)
+			}
+			if _, err := io.Copy(cleartext, p.Body); err != nil {
+				return fmt.Errorf("cannot encrypt attachment: %v", err)
+			}
+			if err := cleartext.Close(); err != nil {
+				return fmt.Errorf("cannot encrypt attachment: %v", err)
+			}
+
+			att, err = u.c.CreateAttachment(att, &b)
+			if err != nil {
+				return fmt.Errorf("cannot upload attachment: %v", err)
+			}
+
+			attachments = append(attachments, att)
 		}
 	}
 
@@ -139,7 +190,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 
 	msg.MIMEType = bodyType
 
-	plaintext, err := msg.Encrypt([]*openpgp.Entity{privateKey}, privateKey)
+	plaintext, err = msg.Encrypt([]*openpgp.Entity{privateKey}, privateKey)
 	if err != nil {
 		return err
 	}
@@ -150,15 +201,14 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return err
 	}
 
-	// TODO: parentID from In-Reply-To
-	msg, err = u.c.CreateDraftMessage(msg, "")
+	msg, err = u.c.UpdateDraftMessage(msg)
 	if err != nil {
-		return fmt.Errorf("cannot create draft message: %v", err)
+		return fmt.Errorf("cannot update draft message: %v", err)
 	}
 
 	outgoing := &protonmail.OutgoingMessage{ID: msg.ID}
 
-	recipients := make([]*mail.Address, 0, len(toList) + len(ccList) + len(bccList))
+	recipients := make([]*mail.Address, 0, len(toList)+len(ccList)+len(bccList))
 	recipients = append(recipients, toList...)
 	recipients = append(recipients, ccList...)
 	recipients = append(recipients, bccList...)
@@ -186,9 +236,10 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	}
 
 	if len(plaintextRecipients) > 0 {
+		// TODO: attachments
 		plaintextSet := protonmail.NewMessagePackageSet(nil)
 
-		plaintext, err := plaintextSet.Encrypt(bodyType)
+		plaintext, err := plaintextSet.Encrypt(bodyType, privateKey)
 		if err != nil {
 			return err
 		}
@@ -210,9 +261,10 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	}
 
 	if len(encryptedRecipients) > 0 {
+		// TODO: attachments
 		encryptedSet := protonmail.NewMessagePackageSet(nil)
 
-		plaintext, err := encryptedSet.Encrypt(bodyType)
+		plaintext, err := encryptedSet.Encrypt(bodyType, privateKey)
 		if err != nil {
 			return err
 		}

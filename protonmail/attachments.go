@@ -1,13 +1,18 @@
 package protonmail
 
 import (
+	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
-	"net/http"
 	"io"
-	"mime"
 	"mime/multipart"
+	"net/http"
+	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 type AttachmentKey struct {
@@ -25,7 +30,52 @@ type Attachment struct {
 	ContentID  string
 	KeyPackets string // encrypted with the user's key, base64-encoded
 	//Headers    map[string]string
-	Signature  string
+	Signature string
+}
+
+// Encrypt generates an encrypted key for the provided recipients and encrypts
+// to w the data that will be written to the returned io.WriteCloser.
+//
+// signed is ignored for now.
+func (att *Attachment) Encrypt(ciphertext io.Writer, to []*openpgp.Entity, signed *openpgp.Entity) (cleartext io.WriteCloser, err error) {
+	config := &packet.Config{}
+
+	var encodedKeyPackets bytes.Buffer
+	keyPackets := base64.NewEncoder(base64.StdEncoding, &encodedKeyPackets)
+
+	unencryptedKey, err := generateUnencryptedKey(packet.CipherAES256, config)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, pub := range to {
+		encKey, ok := encryptionKey(pub, config.Now())
+		if !ok {
+			return nil, errors.New("cannot encrypt an attachment to key id " + strconv.FormatUint(pub.PrimaryKey.KeyId, 16) + " because it has no encryption keys")
+		}
+
+		err := packet.SerializeEncryptedKey(keyPackets, encKey.PublicKey, unencryptedKey.CipherFunc, unencryptedKey.Key, config)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	keyPackets.Close()
+	att.KeyPackets = encodedKeyPackets.String()
+
+	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, unencryptedKey.CipherFunc, unencryptedKey.Key, config)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: sign, see https://github.com/golang/crypto/blob/master/openpgp/write.go#L287
+
+	literalData, err := packet.SerializeLiteral(encryptedData, true, att.Name, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return literalData, nil
 }
 
 // GetAttachment downloads an attachment's payload. The returned io.ReadCloser
@@ -88,7 +138,7 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 			}
 		}
 
-		if w, err := mw.CreateFormFile("DataPackets", "DataPackets.pgp"); err != nil {
+		if w, err := mw.CreateFormFile("DataPacket", "DataPacket.pgp"); err != nil {
 			pw.CloseWithError(err)
 			return
 		} else if _, err := io.Copy(w, r); err != nil {
@@ -109,8 +159,7 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 		return nil, err
 	}
 
-	params := map[string]string{"boundary": mw.Boundary()}
-	req.Header.Set("Content-Type", mime.FormatMediaType("multipart/form-data", params))
+	req.Header.Set("Content-Type", mw.FormDataContentType())
 
 	var respData struct {
 		resp

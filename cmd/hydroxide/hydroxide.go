@@ -135,8 +135,8 @@ func main() {
 
 		be := smtpbackend.New(sessions)
 		s := smtp.NewServer(be)
-		s.Addr = "127.0.0.1:"+port
-		s.Domain = "localhost" // TODO: make this configurable
+		s.Addr = "127.0.0.1:" + port
+		s.Domain = "localhost"     // TODO: make this configurable
 		s.AllowInsecureAuth = true // TODO: remove this
 
 		log.Println("Starting SMTP server at", s.Addr)

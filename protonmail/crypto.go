@@ -1,9 +1,11 @@
 package protonmail
 
 import (
+	"io"
 	"time"
 
 	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 // primaryIdentity returns the Identity marked as primary or the first identity
@@ -88,4 +90,16 @@ func signingKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 	}
 
 	return openpgp.Key{}, false
+}
+
+func generateUnencryptedKey(cipher packet.CipherFunction, config *packet.Config) (*packet.EncryptedKey, error) {
+	symKey := make([]byte, cipher.KeySize())
+	if _, err := io.ReadFull(config.Random(), symKey); err != nil {
+		return nil, err
+	}
+
+	return &packet.EncryptedKey{
+		CipherFunc: cipher,
+		Key:        symKey,
+	}, nil
 }
