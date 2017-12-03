@@ -210,7 +210,27 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	}
 
 	if len(encryptedRecipients) > 0 {
-		// TODO
+		encryptedSet := protonmail.NewMessagePackageSet(nil)
+
+		plaintext, err := encryptedSet.Encrypt(bodyType)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(plaintext, bytes.NewReader(body.Bytes())); err != nil {
+			plaintext.Close()
+			return err
+		}
+		if err := plaintext.Close(); err != nil {
+			return err
+		}
+
+		for rcpt, pub := range encryptedRecipients {
+			if err := encryptedSet.AddInternal(rcpt, pub); err != nil {
+				return err
+			}
+		}
+
+		outgoing.Packages = append(outgoing.Packages, encryptedSet)
 	}
 
 	_, _, err = u.c.SendMessage(outgoing)

@@ -331,18 +331,17 @@ func (set *MessagePackageSet) AddCleartext(addr string) error {
 }
 
 func serializeEncryptedKey(symKey *packet.EncryptedKey, pub *packet.PublicKey, config *packet.Config) (string, error) {
-	var armored bytes.Buffer
-	ciphertext, err := armor.Encode(&armored, "PGP MESSAGE", nil)
+	var encoded bytes.Buffer
+	ciphertext := base64.NewEncoder(base64.StdEncoding, &encoded)
+
+	err := packet.SerializeEncryptedKey(ciphertext, pub, symKey.CipherFunc, symKey.Key, config)
 	if err != nil {
 		return "", err
 	}
 
-	err = packet.SerializeEncryptedKey(ciphertext, pub, symKey.CipherFunc, symKey.Key, config)
-	if err != nil {
-		return "", err
-	}
+	ciphertext.Close()
 
-	return armored.String(), nil
+	return encoded.String(), nil
 }
 
 func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) error {
