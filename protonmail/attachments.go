@@ -31,13 +31,15 @@ type Attachment struct {
 	KeyPackets string // encrypted with the user's key, base64-encoded
 	//Headers    map[string]string
 	Signature string
+
+	unencryptedKey *packet.EncryptedKey
 }
 
-// Encrypt generates an encrypted key for the provided recipients and encrypts
-// to w the data that will be written to the returned io.WriteCloser.
+// GenerateKey generates an encrypted key and encrypts it to the provided
+// recipients. Usually, the recipient is the user himself.
 //
-// signed is ignored for now.
-func (att *Attachment) Encrypt(ciphertext io.Writer, to []*openpgp.Entity, signed *openpgp.Entity) (cleartext io.WriteCloser, err error) {
+// The returned key is NOT encrypted.
+func (att *Attachment) GenerateKey(to []*openpgp.Entity) (*packet.EncryptedKey, error) {
 	config := &packet.Config{}
 
 	var encodedKeyPackets bytes.Buffer
@@ -61,9 +63,26 @@ func (att *Attachment) Encrypt(ciphertext io.Writer, to []*openpgp.Entity, signe
 	}
 
 	keyPackets.Close()
+	att.unencryptedKey = unencryptedKey
 	att.KeyPackets = encodedKeyPackets.String()
+	return unencryptedKey, nil
+}
 
-	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, unencryptedKey.CipherFunc, unencryptedKey.Key, config)
+// Encrypt encrypts to w the data that will be written to the returned
+// io.WriteCloser.
+//
+// Prior to calling Encrypt, an attachment key must have been generated with
+// GenerateKey.
+//
+// signed is ignored for now.
+func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cleartext io.WriteCloser, err error) {
+	config := &packet.Config{}
+
+	if att.unencryptedKey == nil {
+		return nil, errors.New("cannot encrypt attachment: no attachment key available")
+	}
+
+	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, att.unencryptedKey.CipherFunc, att.unencryptedKey.Key, config)
 	if err != nil {
 		return nil, err
 	}
@@ -148,10 +167,7 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 
 		// TODO: Signature
 
-		if err := mw.Close(); err != nil {
-			pw.CloseWithError(err)
-		}
-		pw.Close()
+		pw.CloseWithError(mw.Close())
 	}()
 
 	req, err := c.newRequest(http.MethodPost, "/attachments", pr)

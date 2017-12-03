@@ -9,6 +9,7 @@ import (
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
 	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/packet"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/protonmail"
@@ -42,6 +43,7 @@ type user struct {
 }
 
 func (u *user) Send(from string, to []string, r io.Reader) error {
+	// Parse the incoming MIME message header
 	mr, err := mail.CreateReader(r)
 	if err != nil {
 		return err
@@ -116,9 +118,13 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return fmt.Errorf("cannot create draft message: %v", err)
 	}
 
+	// Parse the incoming MIME message body
+	// Save the message text into a buffer
+	// Upload attachments
+
 	var body *bytes.Buffer
 	var bodyType string
-	var attachments []*protonmail.Attachment
+	attachmentKeys := make(map[string]*packet.EncryptedKey)
 
 	for {
 		p, err := mr.NextPart()
@@ -163,24 +169,32 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 				// TODO: Header
 			}
 
-			var b bytes.Buffer
-			cleartext, err := att.Encrypt(&b, []*openpgp.Entity{privateKey}, privateKey)
+			attKey, err := att.GenerateKey([]*openpgp.Entity{privateKey})
 			if err != nil {
-				return fmt.Errorf("cannot encrypt attachment: %v", err)
-			}
-			if _, err := io.Copy(cleartext, p.Body); err != nil {
-				return fmt.Errorf("cannot encrypt attachment: %v", err)
-			}
-			if err := cleartext.Close(); err != nil {
-				return fmt.Errorf("cannot encrypt attachment: %v", err)
+				return fmt.Errorf("cannot generate attachment key: %v", err)
 			}
 
-			att, err = u.c.CreateAttachment(att, &b)
+			pr, pw := io.Pipe()
+
+			go func() {
+				cleartext, err := att.Encrypt(pw, privateKey)
+				if err != nil {
+					pw.CloseWithError(err)
+					return
+				}
+				if _, err := io.Copy(cleartext, p.Body); err != nil {
+					pw.CloseWithError(err)
+					return
+				}
+				pw.CloseWithError(cleartext.Close())
+			}()
+
+			att, err = u.c.CreateAttachment(att, pr)
 			if err != nil {
 				return fmt.Errorf("cannot upload attachment: %v", err)
 			}
 
-			attachments = append(attachments, att)
+			attachmentKeys[att.ID] = attKey
 		}
 	}
 
@@ -188,8 +202,8 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return errors.New("message doesn't contain a body part")
 	}
 
+	// Encrypt the body and update the draft
 	msg.MIMEType = bodyType
-
 	plaintext, err = msg.Encrypt([]*openpgp.Entity{privateKey}, privateKey)
 	if err != nil {
 		return err
@@ -206,7 +220,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return fmt.Errorf("cannot update draft message: %v", err)
 	}
 
-	outgoing := &protonmail.OutgoingMessage{ID: msg.ID}
+	// Split internal recipients and plaintext recipients
 
 	recipients := make([]*mail.Address, 0, len(toList)+len(ccList)+len(bccList))
 	recipients = append(recipients, toList...)
@@ -235,9 +249,11 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		encryptedRecipients[rcpt.Address] = pub
 	}
 
+	// Create and send the outgoing message
+	outgoing := &protonmail.OutgoingMessage{ID: msg.ID}
+
 	if len(plaintextRecipients) > 0 {
-		// TODO: attachments
-		plaintextSet := protonmail.NewMessagePackageSet(nil)
+		plaintextSet := protonmail.NewMessagePackageSet(attachmentKeys)
 
 		plaintext, err := plaintextSet.Encrypt(bodyType, privateKey)
 		if err != nil {
@@ -261,8 +277,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	}
 
 	if len(encryptedRecipients) > 0 {
-		// TODO: attachments
-		encryptedSet := protonmail.NewMessagePackageSet(nil)
+		encryptedSet := protonmail.NewMessagePackageSet(attachmentKeys)
 
 		plaintext, err := encryptedSet.Encrypt(bodyType, privateKey)
 		if err != nil {
