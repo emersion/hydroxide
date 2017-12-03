@@ -10,9 +10,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/emersion/go-smtp"
+
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/protonmail"
+	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
 
 func newClient() *protonmail.Client {
@@ -122,7 +125,23 @@ func main() {
 		}
 
 		fmt.Println("Bridge password:", bridgePassword)
-	case "":
+	case "smtp":
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "1465"
+		}
+
+		sessions := auth.NewManager(newClient)
+
+		be := smtpbackend.New(sessions)
+		s := smtp.NewServer(be)
+		s.Addr = "127.0.0.1:" + port
+		s.Domain = "localhost"     // TODO: make this configurable
+		s.AllowInsecureAuth = true // TODO: remove this
+
+		log.Println("Starting SMTP server at", s.Addr)
+		log.Fatal(s.ListenAndServe())
+	case "carddav":
 		port := os.Getenv("PORT")
 		if port == "" {
 			port = "8080"
@@ -167,10 +186,11 @@ func main() {
 			}),
 		}
 
-		log.Println("Starting server at", s.Addr)
+		log.Println("Starting CardDAV server at", s.Addr)
 		log.Fatal(s.ListenAndServe())
 	default:
-		log.Fatal("usage: hydroxide")
+		log.Fatal("usage: hydroxide carddav")
+		log.Fatal("usage: hydroxide smtp")
 		log.Fatal("usage: hydroxide auth <username>")
 	}
 }

@@ -63,7 +63,7 @@ type Message struct {
 	SpamScore      int
 	AddressID      string
 	Body           string
-	MIMEType       string
+	MIMEType       string `json:",omitempty"`
 	CCList         []*MessageAddress
 	BCCList        []*MessageAddress
 	Header         string
@@ -214,55 +214,43 @@ const (
 type MessagePackage struct {
 	Type MessagePackageType
 
-	BodyKeyPacket string
+	BodyKeyPacket        string
 	AttachmentKeyPackets map[string]string
-	Signature int
+	Signature            int
 
 	// Only if encrypted for outside
 	PasswordHint string
-	Auth interface{} // TODO
-	Token string
-	EncToken string
+	Auth         interface{} // TODO
+	Token        string
+	EncToken     string
 }
 
 type MessagePackageSet struct {
-	Type MessagePackageType // OR of each Type
+	Type      MessagePackageType // OR of each Type
 	Addresses map[string]*MessagePackage
-	MIMEType string
-	Body string // Body data packet
+	MIMEType  string
+	Body      string // Body data packet
 
 	// Only if cleartext is sent
-	BodyKey string
+	BodyKey        string
 	AttachmentKeys map[string]string
 
-	bodyKey *packet.EncryptedKey
+	bodyKey        *packet.EncryptedKey
 	attachmentKeys map[string]*packet.EncryptedKey
 }
 
 func NewMessagePackageSet(attachmentKeys map[string]*packet.EncryptedKey) *MessagePackageSet {
 	return &MessagePackageSet{
+		Addresses:      make(map[string]*MessagePackage),
 		attachmentKeys: attachmentKeys,
 	}
 }
 
-func (set *MessagePackageSet) generateBodyKey(cipher packet.CipherFunction, config *packet.Config) error {
-	symKey := make([]byte, cipher.KeySize())
-	if _, err := io.ReadFull(config.Random(), symKey); err != nil {
-		return err
-	}
-
-	set.bodyKey = &packet.EncryptedKey{
-		CipherFunc: cipher,
-		Key: symKey,
-	}
-	return nil
-}
-
 type outgoingMessageWriter struct {
-	cleartext io.WriteCloser
+	cleartext  io.WriteCloser
 	ciphertext io.WriteCloser
-	armored *bytes.Buffer
-	set *MessagePackageSet
+	encoded    *bytes.Buffer
+	set        *MessagePackageSet
 }
 
 func (w *outgoingMessageWriter) Write(p []byte) (int, error) {
@@ -276,23 +264,28 @@ func (w *outgoingMessageWriter) Close() error {
 	if err := w.ciphertext.Close(); err != nil {
 		return err
 	}
-	w.set.Body = w.armored.String()
-	w.armored = nil
+	w.set.Body = w.encoded.String()
+	w.encoded = nil
 	return nil
 }
 
-func (set *MessagePackageSet) Encrypt() (io.WriteCloser, error) {
+// Encrypt encrypts the data that will be written to the returned
+// io.WriteCloser.
+//
+// The signed parameter is ignored for now.
+func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (io.WriteCloser, error) {
+	set.MIMEType = mimeType
+
 	config := &packet.Config{}
 
-	if err := set.generateBodyKey(packet.CipherAES256, config); err != nil {
-		return nil, err
-	}
-
-	var armored bytes.Buffer
-	ciphertext, err := armor.Encode(&armored, "PGP MESSAGE", nil)
+	key, err := generateUnencryptedKey(packet.CipherAES256, config)
 	if err != nil {
 		return nil, err
 	}
+	set.bodyKey = key
+
+	var encoded bytes.Buffer
+	ciphertext := base64.NewEncoder(base64.StdEncoding, &encoded)
 
 	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, set.bodyKey.CipherFunc, set.bodyKey.Key, config)
 	if err != nil {
@@ -307,15 +300,16 @@ func (set *MessagePackageSet) Encrypt() (io.WriteCloser, error) {
 	}
 
 	return &outgoingMessageWriter{
-		cleartext: literalData,
+		cleartext:  literalData,
 		ciphertext: ciphertext,
-		armored: &armored,
-		set: set,
+		encoded:    &encoded,
+		set:        set,
 	}, nil
 }
 
 func (set *MessagePackageSet) AddCleartext(addr string) error {
 	set.Addresses[addr] = &MessagePackage{Type: MessagePackageCleartext}
+	set.Type |= MessagePackageCleartext
 
 	if set.BodyKey == "" || set.AttachmentKeys == nil {
 		set.BodyKey = base64.StdEncoding.EncodeToString(set.bodyKey.Key)
@@ -330,18 +324,17 @@ func (set *MessagePackageSet) AddCleartext(addr string) error {
 }
 
 func serializeEncryptedKey(symKey *packet.EncryptedKey, pub *packet.PublicKey, config *packet.Config) (string, error) {
-	var armored bytes.Buffer
-	ciphertext, err := armor.Encode(&armored, "PGP MESSAGE", nil)
+	var encoded bytes.Buffer
+	ciphertext := base64.NewEncoder(base64.StdEncoding, &encoded)
+
+	err := packet.SerializeEncryptedKey(ciphertext, pub, symKey.CipherFunc, symKey.Key, config)
 	if err != nil {
 		return "", err
 	}
 
-	err = packet.SerializeEncryptedKey(ciphertext, pub, symKey.CipherFunc, symKey.Key, config)
-	if err != nil {
-		return "", err
-	}
+	ciphertext.Close()
 
-	return armored.String(), nil
+	return encoded.String(), nil
 }
 
 func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) error {
@@ -366,9 +359,10 @@ func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) erro
 		attachmentKeys[att] = attKey
 	}
 
+	set.Type |= MessagePackageInternal
 	set.Addresses[addr] = &MessagePackage{
-		Type: MessagePackageInternal,
-		BodyKeyPacket: bodyKey,
+		Type:                 MessagePackageInternal,
+		BodyKeyPacket:        bodyKey,
 		AttachmentKeyPackets: attachmentKeys,
 	}
 	return nil
@@ -384,7 +378,7 @@ type OutgoingMessage struct {
 }
 
 func (c *Client) SendMessage(msg *OutgoingMessage) (sent, parent *Message, err error) {
-	req, err := c.newJSONRequest(http.MethodPut, "/messages/"+msg.ID, msg)
+	req, err := c.newJSONRequest(http.MethodPost, "/messages/send/"+msg.ID, msg)
 	if err != nil {
 		return nil, nil, err
 	}

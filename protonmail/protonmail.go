@@ -82,6 +82,8 @@ func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Re
 	}
 	b := buf.Bytes()
 
+	//log.Printf(">> %v %v\n%v", method, path, string(b))
+
 	req, err := c.newRequest(method, path, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
