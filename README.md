@@ -17,7 +17,7 @@ Your credentials will be stored on disk encrypted with a 32-byte random
 password. When configuring your client, you'll need this password.
 
 ```shell
-go get github.com/emersion/hydroxide
+go get github.com/emersion/hydroxide/cmd/hydroxide
 hydroxide auth <username>
 ```
 
