@@ -11,15 +11,31 @@ Rationale:
 * Standard-compliant (we don't care about Microsoft Outlook)
 * Fully open-source
 
-## Usage
+## Setup
+
+### Golang
+
+hydroxide is implemented with Go. Head to [Golang website](https://golang.org) 
+for setup information.
+
+### Install and Setup
+
+Install hydroxide
+
+```shell
+go get github.com/emersion/hydroxide/cmd/hydroxide
+```
 
 Your credentials will be stored on disk encrypted with a 32-byte random
 password. When configuring your client, you'll need this password.
 
 ```shell
-go get github.com/emersion/hydroxide/cmd/hydroxide
 hydroxide auth <username>
 ```
+
+## Usage
+
+hydroxide can be used in multiple modes.
 
 ### CardDAV
 
