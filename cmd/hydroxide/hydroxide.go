@@ -164,6 +164,7 @@ func main() {
 		s := imapserver.New(be)
 		s.Addr = "127.0.0.1:" + port
 		s.AllowInsecureAuth = true // TODO: remove this
+		//s.Debug = os.Stdout
 		s.Enable(imapspacialuse.NewExtension())
 
 		log.Println("Starting IMAP server at", s.Addr)
