@@ -145,6 +145,7 @@ func main() {
 		s.Addr = "127.0.0.1:" + port
 		s.Domain = "localhost"     // TODO: make this configurable
 		s.AllowInsecureAuth = true // TODO: remove this
+		//s.Debug = os.Stdout
 
 		log.Println("Starting SMTP server at", s.Addr)
 		log.Fatal(s.ListenAndServe())

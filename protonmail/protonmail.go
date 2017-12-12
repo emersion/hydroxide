@@ -4,6 +4,7 @@ package protonmail
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -23,7 +24,8 @@ type resp struct {
 
 func (r *resp) Err() error {
 	if err := r.apiError; err != nil {
-		return r.apiError
+		err.code = r.Code
+		return err
 	}
 	return nil
 }
@@ -33,11 +35,12 @@ type maybeError interface {
 }
 
 type apiError struct {
+	code int // populated by resp
 	Message string `json:"Error"`
 }
 
 func (err apiError) Error() string {
-	return err.Message
+	return fmt.Sprintf("[%v] %v", err.code, err.Message)
 }
 
 // Client is a ProtonMail API client.
