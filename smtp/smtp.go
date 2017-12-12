@@ -237,7 +237,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 
 		if len(resp.Keys) == 0 {
 			plaintextRecipients = append(plaintextRecipients, rcpt.Address)
-			break
+			continue
 		}
 
 		// TODO: only keys with Send == 1
