@@ -6,6 +6,7 @@ import (
 	imapbackend "github.com/emersion/go-imap/backend"
 	"github.com/emersion/go-imap-specialuse"
 
+	"github.com/emersion/hydroxide/imap/database"
 	"github.com/emersion/hydroxide/protonmail"
 )
 
@@ -29,6 +30,7 @@ type user struct {
 	u           *protonmail.User
 	privateKeys openpgp.EntityList
 
+	db *database.User
 	mailboxes map[string]*mailbox
 }
 
@@ -40,11 +42,36 @@ func newUser(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.Entit
 		mailboxes: make(map[string]*mailbox),
 	}
 
+	db, err := database.Open(u.Name+".db")
+	if err != nil {
+		return nil, err
+	}
+	uu.db = db
+
 	for _, data := range systemMailboxes {
-		uu.mailboxes[data.name] = &mailbox{
+		mboxDB, err := db.Mailbox(data.label)
+		if err != nil {
+			return nil, err
+		}
+
+		uu.mailboxes[data.label] = &mailbox{
 			name: data.name,
 			label: data.label,
 			flags: data.flags,
+			u: uu,
+			db: mboxDB,
+		}
+	}
+
+	counts, err := c.CountMessages("")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, count := range counts {
+		if mbox, ok := uu.mailboxes[count.LabelID]; ok {
+			mbox.total = count.Total
+			mbox.unread = count.Unread
 		}
 	}
 
@@ -64,11 +91,12 @@ func (u *user) ListMailboxes(subscribed bool) ([]imapbackend.Mailbox, error) {
 }
 
 func (u *user) GetMailbox(name string) (imapbackend.Mailbox, error) {
-	if mbox, ok := u.mailboxes[name]; ok {
-		return mbox, nil
-	} else {
-		return nil, imapbackend.ErrNoSuchMailbox
+	for _, mbox := range u.mailboxes {
+		if mbox.name == name {
+			return mbox, nil
+		}
 	}
+	return nil, imapbackend.ErrNoSuchMailbox
 }
 
 func (u *user) CreateMailbox(name string) error {

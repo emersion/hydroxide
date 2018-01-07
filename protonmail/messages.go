@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -130,6 +131,103 @@ func (msg *Message) Encrypt(to []*openpgp.Entity, signed *openpgp.Entity) (plain
 		b:          &b,
 		msg:        msg,
 	}, nil
+}
+
+type MessageFilter struct {
+	Page int
+	PageSize int
+	Limit int
+
+	Label string
+	Sort string
+	Asc bool
+	Begin int64
+	End int64
+	Keyword string
+	To string
+	From string
+	Subject string
+	Attachments *bool
+	Starred *bool
+	Unread *bool
+	Conversation string
+	Address string
+	ID []string
+	ExternalID string
+}
+
+func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Message, err error) {
+	v := url.Values{}
+	if filter.Page != 0 {
+		v.Set("Page", strconv.Itoa(filter.Page))
+	}
+	if filter.PageSize != 0 {
+		v.Set("PageSize", strconv.Itoa(filter.PageSize))
+	}
+	if filter.Limit != 0 {
+		v.Set("Limit", strconv.Itoa(filter.Limit))
+	}
+	if filter.Label != "" {
+		v.Set("Label", filter.Label)
+	}
+	if filter.Sort != "" {
+		v.Set("Sort", filter.Sort)
+	}
+	if filter.Asc {
+		v.Set("Desc", "0")
+	}
+	if filter.Conversation != "" {
+		v.Set("Conversation", filter.Conversation)
+	}
+	if filter.Address != "" {
+		v.Set("Address", filter.Address)
+	}
+	if filter.ExternalID != "" {
+		v.Set("ExternalID", filter.ExternalID)
+	}
+
+	req, err := c.newRequest(http.MethodGet, "/messages?"+v.Encode(), nil)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var respData struct {
+		resp
+		Total int
+		Messages []*Message
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return 0, nil, err
+	}
+
+	return respData.Total, respData.Messages, nil
+}
+
+type MessageCount struct {
+	LabelID string
+	Total int
+	Unread int
+}
+
+func (c *Client) CountMessages(address string) ([]*MessageCount, error) {
+	v := url.Values{}
+	if address != "" {
+		v.Set("Address", address)
+	}
+	req, err := c.newRequest(http.MethodGet, "/messages/count?"+v.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Counts []*MessageCount
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Counts, nil
 }
 
 func (c *Client) GetMessage(id string) (*Message, error) {
