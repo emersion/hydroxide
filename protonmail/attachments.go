@@ -98,11 +98,21 @@ func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cl
 }
 
 func (att *Attachment) Read(ciphertext io.Reader, keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
-	// TODO
+	if len(att.KeyPackets) == 0 {
+		return &openpgp.MessageDetails{
+			IsEncrypted:    false,
+			IsSigned:       false,
+			UnverifiedBody: ciphertext,
+		}, nil
+	} else {
+		kpr := base64.NewDecoder(base64.StdEncoding, strings.NewReader(att.KeyPackets))
+		r := io.MultiReader(kpr, ciphertext)
+		return openpgp.ReadMessage(r, keyring, prompt, nil)
+	}
 }
 
 // GetAttachment downloads an attachment's payload. The returned io.ReadCloser
-// may be encrypted.
+// may be encrypted, use Attachment.Read to decrypt it.
 func (c *Client) GetAttachment(id string) (io.ReadCloser, error) {
 	req, err := c.newRequest(http.MethodGet, "/attachments/"+id, nil)
 	if err != nil {
