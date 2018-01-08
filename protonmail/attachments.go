@@ -97,6 +97,10 @@ func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cl
 	return literalData, nil
 }
 
+func (att *Attachment) Read(ciphertext io.Reader, keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
+	// TODO
+}
+
 // GetAttachment downloads an attachment's payload. The returned io.ReadCloser
 // may be encrypted.
 func (c *Client) GetAttachment(id string) (io.ReadCloser, error) {

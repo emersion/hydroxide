@@ -1,10 +1,15 @@
 package imap
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"strings"
 	"time"
 
 	"github.com/emersion/go-imap"
+	"github.com/emersion/go-message"
+	"github.com/emersion/go-message/mail"
 
 	"github.com/emersion/hydroxide/imap/database"
 	"github.com/emersion/hydroxide/protonmail"
@@ -103,11 +108,15 @@ func (mbox *mailbox) sync() error {
 	return nil
 }
 
-func getMessageID(id string) string {
-	return id + "@protonmail.com"
+func getMessageID(msg *protonmail.Message) string {
+	if msg.ExternalID != "" {
+		return msg.ExternalID
+	} else {
+		return msg.ID + "@protonmail.com"
+	}
 }
 
-func getAddress(addr *protonmail.MessageAddress) *imap.Address {
+func imapAddress(addr *protonmail.MessageAddress) *imap.Address {
 	parts := strings.SplitN(addr.Address, "@", 2)
 	if len(parts) < 2 {
 		parts = append(parts, "")
@@ -120,26 +129,31 @@ func getAddress(addr *protonmail.MessageAddress) *imap.Address {
 	}
 }
 
-func getAddressList(addresses []*protonmail.MessageAddress) []*imap.Address {
+func imapAddressList(addresses []*protonmail.MessageAddress) []*imap.Address {
 	l := make([]*imap.Address, len(addresses))
 	for i, addr := range addresses {
-		l[i] = getAddress(addr)
+		l[i] = imapAddress(addr)
 	}
 	return l
 }
 
 func getEnvelope(msg *protonmail.Message) *imap.Envelope {
+	var replyTo []*imap.Address
+	if msg.ReplyTo != nil {
+		replyTo = []*imap.Address{imapAddress(msg.ReplyTo)}
+	}
+
 	return &imap.Envelope{
 		Date: time.Unix(msg.Time, 0),
 		Subject: msg.Subject,
-		From: []*imap.Address{getAddress(msg.Sender)},
-		Sender: []*imap.Address{getAddress(msg.Sender)},
-		ReplyTo: []*imap.Address{getAddress(msg.ReplyTo)},
-		To: getAddressList(msg.ToList),
-		Cc: getAddressList(msg.CCList),
-		Bcc: getAddressList(msg.BCCList),
+		From: []*imap.Address{imapAddress(msg.Sender)},
+		// TODO: Sender
+		ReplyTo: replyTo,
+		To: imapAddressList(msg.ToList),
+		Cc: imapAddressList(msg.CCList),
+		Bcc: imapAddressList(msg.BCCList),
 		// TODO: InReplyTo
-		MessageId: getMessageID(msg.ID),
+		MessageId: getMessageID(msg),
 	}
 }
 
@@ -206,6 +220,7 @@ func (mbox *mailbox) getBodyStructure(msg *protonmail.Message, extended bool) (*
 		parts = append(parts, &imap.BodyStructure{
 			MIMEType: attType,
 			MIMESubType: attSubType,
+			Id: att.ContentID,
 			Encoding: "base64",
 			Size: uint32(att.Size),
 			Extended: extended,
@@ -224,8 +239,151 @@ func (mbox *mailbox) getBodyStructure(msg *protonmail.Message, extended bool) (*
 	}, nil
 }
 
-func (mbox *mailbox) getBodySection(id string, section *imap.BodySectionName) (imap.Literal, error) {
-	// TODO
+func (mbox *mailbox) getInlineSection(msg *protonmail.Message) (message.Header, io.Reader, error) {
+	h := mail.NewTextHeader()
+	h.SetContentType(msg.MIMEType, nil)
+
+	md, err := msg.Read(mbox.u.privateKeys, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// TODO: check signature
+	return h.Header, md.UnverifiedBody, nil
+}
+
+func (mbox *mailbox) getAttachmentSection(att *protonmail.Attachment) (message.Header, io.Reader, error) {
+	h := mail.NewAttachmentHeader()
+	h.SetContentType(att.MIMEType, nil)
+	h.SetFilename(att.Name)
+	if att.ContentID != "" {
+		h.Set("Content-Id", att.ContentID)
+	}
+
+	rc, err := mbox.u.c.GetAttachment(att.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	md, err := att.Read(rc, mbox.u.privateKeys, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// TODO: check signature
+	return h.Header, md.UnverifiedBody, nil
+}
+
+func mailAddress(addr *protonmail.MessageAddress) *mail.Address {
+	return &mail.Address{
+		Name: addr.Name,
+		Address: addr.Address,
+	}
+}
+
+func mailAddressList(addresses []*protonmail.MessageAddress) []*mail.Address {
+	l := make([]*mail.Address, len(addresses))
+	for i, addr := range addresses {
+		l[i] = mailAddress(addr)
+	}
+	return l
+}
+
+func (mbox *mailbox) getBodySection(msg *protonmail.Message, section *imap.BodySectionName) (imap.Literal, error) {
+	// TODO: section.Peek
+	// TODO: section.Partial
+	// TODO: section.Specifier
+
+	// TODO: only fetch if needed
+	msg, err := mbox.u.c.GetMessage(msg.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	b := new(bytes.Buffer)
+
+	if len(section.Path) == 0 {
+		h := mail.NewHeader()
+		h.SetDate(time.Unix(msg.Time, 0))
+		h.SetSubject(msg.Subject)
+		h.SetAddressList("From", []*mail.Address{mailAddress(msg.Sender)})
+		if msg.ReplyTo != nil {
+			h.SetAddressList("Reply-To", []*mail.Address{mailAddress(msg.ReplyTo)})
+		}
+		h.SetAddressList("To", mailAddressList(msg.ToList))
+		h.SetAddressList("Cc", mailAddressList(msg.CCList))
+		h.SetAddressList("Bcc", mailAddressList(msg.BCCList))
+		// TODO: In-Reply-To
+		h.Set("Message-Id", getMessageID(msg))
+
+		w, err := message.CreateWriter(b, h.Header)
+		if err != nil {
+			return nil, err
+		}
+
+		ph, pr, err := mbox.getInlineSection(msg)
+		if err != nil {
+			return nil, err
+		}
+		pw, err := w.CreatePart(ph)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := io.Copy(pw, pr); err != nil {
+			return nil, err
+		}
+		pw.Close()
+
+		for _, att := range msg.Attachments {
+			ph, pr, err := mbox.getAttachmentSection(att)
+			if err != nil {
+				return nil, err
+			}
+
+			pw, err := w.CreatePart(ph)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := io.Copy(pw, pr); err != nil {
+				return nil, err
+			}
+			pw.Close()
+		}
+
+		w.Close()
+	} else {
+		if len(section.Path) > 1 {
+			return nil, errors.New("invalid body section path length")
+		}
+
+		var h message.Header
+		var r io.Reader
+		var err error
+		part := section.Path[0]
+		if part == 1 {
+			h, r, err = mbox.getInlineSection(msg)
+		} else {
+			i := part - 2
+			if i >= msg.NumAttachments {
+				return nil, errors.New("invalid attachment section path")
+			}
+			h, r, err = mbox.getAttachmentSection(msg.Attachments[i])
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		w, err := message.CreateWriter(b, h)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := io.Copy(w, r); err != nil {
+			return nil, err
+		}
+		w.Close()
+	}
+
+	return b, nil
 }
 
 func (mbox *mailbox) getMessage(isUid bool, id uint32, items []imap.FetchItem) (*imap.Message, error) {
@@ -275,7 +433,7 @@ func (mbox *mailbox) getMessage(isUid bool, id uint32, items []imap.FetchItem) (
 				break
 			}
 
-			l, err := mbox.getBodySection(msg.ID, section)
+			l, err := mbox.getBodySection(msg, section)
 			if err != nil {
 				return nil, err
 			}
