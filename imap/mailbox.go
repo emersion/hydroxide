@@ -172,8 +172,56 @@ func getFlags(msg *protonmail.Message) []string {
 	return flags
 }
 
-func (mbox *mailbox) getBodyStructure(id string, extended bool) (*imap.BodyStructure, error) {
-	// TODO
+func splitMIMEType(t string) (string, string) {
+	parts := strings.SplitN(t, "/", 2)
+	if len(parts) < 2 {
+		return "text", "plain"
+	}
+	return parts[0], parts[1]
+}
+
+func (mbox *mailbox) getBodyStructure(msg *protonmail.Message, extended bool) (*imap.BodyStructure, error) {
+	if msg.NumAttachments > 0 {
+		var err error
+		msg, err = mbox.u.c.GetMessage(msg.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	inlineType, inlineSubType := splitMIMEType(msg.MIMEType)
+	parts := []*imap.BodyStructure{
+		&imap.BodyStructure{
+			MIMEType: inlineType,
+			MIMESubType: inlineSubType,
+			Encoding: "quoted-printable",
+			Size: uint32(len(msg.Body)),
+			Extended: extended,
+			Disposition: "inline",
+		},
+	}
+
+	for _, att := range msg.Attachments {
+		attType, attSubType := splitMIMEType(att.MIMEType)
+		parts = append(parts, &imap.BodyStructure{
+			MIMEType: attType,
+			MIMESubType: attSubType,
+			Encoding: "base64",
+			Size: uint32(att.Size),
+			Extended: extended,
+			Disposition: "attachment",
+			DispositionParams: map[string]string{"filename": att.Name},
+		})
+	}
+
+	return &imap.BodyStructure{
+		MIMEType: "multipart",
+		MIMESubType: "mixed",
+		// TODO: Params: map[string]string{"boundary": ...},
+		// TODO: Size
+		Parts: parts,
+		Extended: extended,
+	}, nil
 }
 
 func (mbox *mailbox) getBodySection(id string, section *imap.BodySectionName) (imap.Literal, error) {
@@ -208,7 +256,7 @@ func (mbox *mailbox) getMessage(isUid bool, id uint32, items []imap.FetchItem) (
 		case imap.FetchEnvelope:
 			fetched.Envelope = getEnvelope(msg)
 		case imap.FetchBody, imap.FetchBodyStructure:
-			bs, err := mbox.getBodyStructure(msg.ID, item == imap.FetchBodyStructure)
+			bs, err := mbox.getBodyStructure(msg, item == imap.FetchBodyStructure)
 			if err != nil {
 				return nil, err
 			}

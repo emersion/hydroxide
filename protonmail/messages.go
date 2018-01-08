@@ -56,6 +56,7 @@ type Message struct {
 	ToList         []*MessageAddress
 	Time           int64
 	Size           int64
+	NumAttachments int
 	IsEncrypted    MessageEncryption
 	ExpirationTime int64
 	IsReplied      int
