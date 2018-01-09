@@ -30,7 +30,7 @@ func (mbox *Mailbox) bucket(tx *bolt.Tx) (*bolt.Bucket, error) {
 	if b == nil {
 		return nil, errors.New("cannot find mailboxes bucket")
 	}
-	b = tx.Bucket([]byte(mbox.name))
+	b = b.Bucket([]byte(mbox.name))
 	if b == nil {
 		return nil, errors.New("cannot find mailbox bucket")
 	}

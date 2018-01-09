@@ -2,7 +2,9 @@ package imap
 
 import (
 	"errors"
+	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -20,6 +22,9 @@ type mailbox struct {
 
 	u *user
 	db *database.Mailbox
+
+	initialized bool
+	initializedLock sync.Mutex
 
 	total, unread int
 }
@@ -73,6 +78,8 @@ func (mbox *mailbox) Check() error {
 }
 
 func (mbox *mailbox) sync() error {
+	log.Printf("Synchronizing mailbox %v...", mbox.name)
+
 	filter := &protonmail.MessageFilter{
 		PageSize: 150,
 		Label: mbox.label,
@@ -101,6 +108,25 @@ func (mbox *mailbox) sync() error {
 		filter.Page++
 	}
 
+	log.Printf("Synchronizing mailbox %v: done.", mbox.name)
+
+	return nil
+}
+
+func (mbox *mailbox) init() error {
+	mbox.initializedLock.Lock()
+	defer mbox.initializedLock.Unlock()
+
+	if mbox.initialized {
+		return nil
+	}
+
+	// TODO: sync only the first time
+	if err := mbox.sync(); err != nil {
+		return err
+	}
+
+	mbox.initialized = true
 	return nil
 }
 
@@ -165,6 +191,10 @@ func (mbox *mailbox) fetchMessage(isUid bool, id uint32, items []imap.FetchItem)
 func (mbox *mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.FetchItem, ch chan<- *imap.Message) error {
 	defer close(ch)
 
+	if err := mbox.init(); err != nil {
+		return err
+	}
+
 	for _, seq := range seqSet.Set {
 		start := seq.Start
 		if start == 0 {
@@ -203,6 +233,10 @@ func matchString(s, substr string) bool {
 }
 
 func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint32, error) {
+	if err := mbox.init(); err != nil {
+		return nil, err
+	}
+
 	// TODO: c.Not, c.Or
 	if c.Not != nil || c.Or != nil {
 		return nil, errors.New("search queries with NOT or OR clauses or not yet implemented")

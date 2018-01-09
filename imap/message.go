@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -146,9 +147,6 @@ func (mbox *mailbox) fetchBodyStructure(msg *protonmail.Message, extended bool) 
 }
 
 func (mbox *mailbox) inlineBody(msg *protonmail.Message) (io.Reader, error) {
-	h := mail.NewTextHeader()
-	h.SetContentType(msg.MIMEType, nil)
-
 	md, err := msg.Read(mbox.u.privateKeys, nil)
 	if err != nil {
 		return nil, err
@@ -175,13 +173,19 @@ func (mbox *mailbox) attachmentBody(att *protonmail.Attachment) (io.Reader, erro
 
 func inlineHeader(msg *protonmail.Message) message.Header {
 	h := mail.NewTextHeader()
-	h.SetContentType(msg.MIMEType, nil)
+	if msg.MIMEType != "" {
+		h.SetContentType(msg.MIMEType, nil)
+	} else {
+		log.Println("Sending an inline header without its proper MIME type")
+	}
+	h.Set("Content-Transfer-Encoding", "quoted-printable")
 	return h.Header
 }
 
 func attachmentHeader(att *protonmail.Attachment) message.Header {
 	h := mail.NewAttachmentHeader()
 	h.SetContentType(att.MIMEType, nil)
+	h.Set("Content-Transfer-Encoding", "base64")
 	h.SetFilename(att.Name)
 	if att.ContentID != "" {
 		h.Set("Content-Id", att.ContentID)
@@ -206,15 +210,22 @@ func mailAddressList(addresses []*protonmail.MessageAddress) []*mail.Address {
 
 func messageHeader(msg *protonmail.Message) message.Header {
 	h := mail.NewHeader()
+	h.SetContentType("multipart/mixed", nil)
 	h.SetDate(time.Unix(msg.Time, 0))
 	h.SetSubject(msg.Subject)
 	h.SetAddressList("From", []*mail.Address{mailAddress(msg.Sender)})
 	if msg.ReplyTo != nil {
 		h.SetAddressList("Reply-To", []*mail.Address{mailAddress(msg.ReplyTo)})
 	}
-	h.SetAddressList("To", mailAddressList(msg.ToList))
-	h.SetAddressList("Cc", mailAddressList(msg.CCList))
-	h.SetAddressList("Bcc", mailAddressList(msg.BCCList))
+	if len(msg.ToList) > 0 {
+		h.SetAddressList("To", mailAddressList(msg.ToList))
+	}
+	if len(msg.CCList) > 0 {
+		h.SetAddressList("Cc", mailAddressList(msg.CCList))
+	}
+	if len(msg.BCCList) > 0 {
+		h.SetAddressList("Bcc", mailAddressList(msg.BCCList))
+	}
 	// TODO: In-Reply-To
 	h.Set("Message-Id", messageID(msg))
 	return h.Header
@@ -280,13 +291,16 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 		var h message.Header
 		var getBody func() (io.Reader, error)
 		if part := section.Path[0]; part == 1 {
+			// TODO: only fetch the message if the body is needed
+			// For now we fetch it in all cases because the MIME type is not included
+			// in the cached message, and inlineHeader needs it
+			msg, err := mbox.u.c.GetMessage(msg.ID)
+			if err != nil {
+				return nil, err
+			}
+
 			h = inlineHeader(msg)
 			getBody = func() (io.Reader, error) {
-				msg, err := mbox.u.c.GetMessage(msg.ID)
-				if err != nil {
-					return nil, err
-				}
-
 				return mbox.inlineBody(msg)
 			}
 		} else {

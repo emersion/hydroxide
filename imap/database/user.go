@@ -46,7 +46,7 @@ func (u *User) sync(messages []*protonmail.Message) error {
 		for _, msg := range messages {
 			k := []byte(msg.ID)
 			v, err := json.Marshal(msg)
-			if err != nil{
+			if err != nil {
 				return err
 			}
 			if err := b.Put(k, v); err != nil {
@@ -72,6 +72,7 @@ func (u *User) Message(apiID string) (*protonmail.Message, error) {
 			return ErrNotFound
 		}
 
+		msg = &protonmail.Message{}
 		return json.Unmarshal(v, msg)
 	})
 	return msg, err
