@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
@@ -65,7 +66,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	fromAddrStr := fromList[0].Address
 	var fromAddr *protonmail.Address
 	for _, addr := range u.u.Addresses {
-		if addr.Email == fromAddrStr {
+		if strings.EqualFold(addr.Email, fromAddrStr) {
 			fromAddr = addr
 			break
 		}

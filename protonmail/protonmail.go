@@ -24,8 +24,10 @@ type resp struct {
 
 func (r *resp) Err() error {
 	if err := r.apiError; err != nil {
-		err.code = r.Code
-		return err
+		return &ApiError{
+			Code: r.Code,
+			Message: err.Message,
+		}
 	}
 	return nil
 }
@@ -35,12 +37,16 @@ type maybeError interface {
 }
 
 type apiError struct {
-	code int // populated by resp
 	Message string `json:"Error"`
 }
 
-func (err apiError) Error() string {
-	return fmt.Sprintf("[%v] %v", err.code, err.Message)
+type ApiError struct {
+	Code int
+	Message string
+}
+
+func (err *ApiError) Error() string {
+	return fmt.Sprintf("[%v] %v", err.Code, err.Message)
 }
 
 // Client is a ProtonMail API client.
