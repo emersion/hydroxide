@@ -1,6 +1,8 @@
 package imap
 
 import (
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -196,8 +198,103 @@ func (mbox *mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 	return nil
 }
 
-func (mbox *mailbox) SearchMessages(uid bool, criteria *imap.SearchCriteria) ([]uint32, error) {
-	return nil, errNotYetImplemented // TODO
+func matchString(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint32, error) {
+	// TODO: c.Not, c.Or
+	if c.Not != nil || c.Or != nil {
+		return nil, errors.New("search queries with NOT or OR clauses or not yet implemented")
+	}
+
+	var results []uint32
+	err := mbox.db.ForEach(func(seqNum, uid uint32, apiID string) error {
+		if c.SeqNum != nil && !c.SeqNum.Contains(seqNum) {
+			return nil
+		}
+		if c.Uid != nil && !c.Uid.Contains(uid) {
+			return nil
+		}
+
+		// TODO: fetch message from local DB only if needed
+		msg, err := mbox.u.db.Message(apiID)
+		if err != nil {
+			return err
+		}
+
+		flags := make(map[string]bool)
+		for _, flag := range fetchFlags(msg) {
+			flags[flag] = true
+		}
+		for _, f := range c.WithFlags {
+			if !flags[f] {
+				return nil
+			}
+		}
+		for _, f := range c.WithoutFlags {
+			if flags[f] {
+				return nil
+			}
+		}
+
+		date := time.Unix(msg.Time, 0).Round(24 * time.Hour)
+		if !c.Since.IsZero() && !date.After(c.Since) {
+			return nil
+		}
+		if !c.Before.IsZero() && !date.Before(c.Before) {
+			return nil
+		}
+		// TODO: this date should be from the Date MIME header
+		if !c.SentBefore.IsZero() && !date.Before(c.SentBefore) {
+			return nil
+		}
+		if !c.SentSince.IsZero() && !date.After(c.SentSince) {
+			return nil
+		}
+
+		h := messageHeader(msg)
+		for key, wantValues := range c.Header {
+			values, ok := h[key]
+			for _, wantValue := range wantValues {
+				if wantValue == "" && !ok {
+					return nil
+				}
+				if wantValue != "" {
+					ok := false
+					for _, v := range values {
+						if matchString(v, wantValue) {
+							ok = true
+							break
+						}
+					}
+					if !ok {
+						return nil
+					}
+				}
+			}
+		}
+
+		// TODO: c.Body, c.Text
+
+		if c.Larger > 0 && uint32(msg.Size) < c.Larger {
+			return nil
+		}
+		if c.Smaller > 0 && uint32(msg.Size) > c.Smaller {
+			return nil
+		}
+
+		if isUID {
+			results = append(results, uid)
+		} else {
+			results = append(results, seqNum)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 func (mbox *mailbox) CreateMessage(flags []string, date time.Time, body imap.Literal) error {

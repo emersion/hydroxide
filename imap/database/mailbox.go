@@ -154,3 +154,23 @@ func (mbox *Mailbox) FromApiID(apiID string) (uint32, uint32, error) {
 	})
 	return seqNum, uid, err
 }
+
+func (mbox *Mailbox) ForEach(f func(seqNum, uid uint32, apiID string) error) error {
+	return mbox.u.db.View(func(tx *bolt.Tx) error {
+		b, err := mbox.bucket(tx)
+		if err != nil {
+			return err
+		}
+
+		c := b.Cursor()
+		var n uint32 = 1
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if err := f(n, unserializeUID(k), string(v)); err != nil {
+				return err
+			}
+			n++
+		}
+
+		return nil
+	})
+}
