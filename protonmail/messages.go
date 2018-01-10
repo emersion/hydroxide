@@ -308,7 +308,7 @@ const (
 	MessagePackageMIME                                = 32
 )
 
-// From https://github.com/ProtonMail/Angular/blob/v3/src/app/composer/controllers/composeMessage.js#L656
+// From https://github.com/ProtonMail/WebClient/blob/public/src/app/composer/services/encryptMessage.js
 
 type MessagePackage struct {
 	Type MessagePackageType
@@ -328,7 +328,7 @@ type MessagePackageSet struct {
 	Type      MessagePackageType // OR of each Type
 	Addresses map[string]*MessagePackage
 	MIMEType  string
-	Body      string // Body data packet
+	Body      string // Encrypted body data packet
 
 	// Only if cleartext is sent
 	BodyKey        string
@@ -336,6 +336,7 @@ type MessagePackageSet struct {
 
 	bodyKey        *packet.EncryptedKey
 	attachmentKeys map[string]*packet.EncryptedKey
+	signature      int
 }
 
 func NewMessagePackageSet(attachmentKeys map[string]*packet.EncryptedKey) *MessagePackageSet {
@@ -369,9 +370,7 @@ func (w *outgoingMessageWriter) Close() error {
 }
 
 // Encrypt encrypts the data that will be written to the returned
-// io.WriteCloser.
-//
-// The signed parameter is ignored for now.
+// io.WriteCloser, and optionally signs it.
 func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (io.WriteCloser, error) {
 	set.MIMEType = mimeType
 
@@ -383,31 +382,43 @@ func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (
 	}
 	set.bodyKey = key
 
-	var encoded bytes.Buffer
-	ciphertext := base64.NewEncoder(base64.StdEncoding, &encoded)
-
-	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, set.bodyKey.CipherFunc, set.bodyKey.Key, config)
-	if err != nil {
-		return nil, err
+	var signer *packet.PrivateKey
+	if signed != nil {
+		signKey, ok := signingKey(signed, config.Now())
+		if !ok {
+			return nil, errors.New("no valid signing keys")
+		}
+		signer = signKey.PrivateKey
+		if signer == nil {
+			return nil, errors.New("no private key in signing key")
+		}
+		if signer.Encrypted {
+			return nil, errors.New("signing key must be decrypted")
+		}
+		set.signature = 1
 	}
 
-	// TODO: sign, see https://github.com/golang/crypto/blob/master/openpgp/write.go#L287
+	encoded := new(bytes.Buffer)
+	ciphertext := base64.NewEncoder(base64.StdEncoding, encoded)
 
-	literalData, err := packet.SerializeLiteral(encryptedData, false, "", 0)
+	cleartext, err := symetricallyEncrypt(ciphertext, key, signer, nil, config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &outgoingMessageWriter{
-		cleartext:  literalData,
+		cleartext:  cleartext,
 		ciphertext: ciphertext,
-		encoded:    &encoded,
+		encoded:    encoded,
 		set:        set,
 	}, nil
 }
 
 func (set *MessagePackageSet) AddCleartext(addr string) error {
-	set.Addresses[addr] = &MessagePackage{Type: MessagePackageCleartext}
+	set.Addresses[addr] = &MessagePackage{
+		Type: MessagePackageCleartext,
+		Signature: set.signature,
+	}
 	set.Type |= MessagePackageCleartext
 
 	if set.BodyKey == "" || set.AttachmentKeys == nil {
@@ -463,6 +474,7 @@ func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) erro
 		Type:                 MessagePackageInternal,
 		BodyKeyPacket:        bodyKey,
 		AttachmentKeyPackets: attachmentKeys,
+		Signature:            set.signature,
 	}
 	return nil
 }

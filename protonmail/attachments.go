@@ -82,19 +82,13 @@ func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cl
 		return nil, errors.New("cannot encrypt attachment: no attachment key available")
 	}
 
-	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, att.unencryptedKey.CipherFunc, att.unencryptedKey.Key, config)
-	if err != nil {
-		return nil, err
+	// TODO: sign and store signature in att.Signature
+
+	hints := &openpgp.FileHints{
+		IsBinary: true,
+		FileName: att.Name,
 	}
-
-	// TODO: sign, see https://github.com/golang/crypto/blob/master/openpgp/write.go#L287
-
-	literalData, err := packet.SerializeLiteral(encryptedData, true, att.Name, 0)
-	if err != nil {
-		return nil, err
-	}
-
-	return literalData, nil
+	return symetricallyEncrypt(ciphertext, att.unencryptedKey, nil, hints, config)
 }
 
 func (att *Attachment) Read(ciphertext io.Reader, keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {

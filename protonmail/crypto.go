@@ -2,6 +2,8 @@ package protonmail
 
 import (
 	"io"
+	"crypto"
+	"hash"
 	"time"
 
 	"golang.org/x/crypto/openpgp"
@@ -102,4 +104,104 @@ func generateUnencryptedKey(cipher packet.CipherFunction, config *packet.Config)
 		CipherFunc: cipher,
 		Key:        symKey,
 	}, nil
+}
+
+func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, signer *packet.PrivateKey, hints *openpgp.FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
+	// From https://github.com/golang/crypto/blob/master/openpgp/write.go#L172
+
+	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, symKey.CipherFunc, symKey.Key, config)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := crypto.SHA256
+
+	if signer != nil {
+		ops := &packet.OnePassSignature{
+			SigType:    packet.SigTypeBinary,
+			Hash:       hash,
+			PubKeyAlgo: signer.PubKeyAlgo,
+			KeyId:      signer.KeyId,
+			IsLast:     true,
+		}
+		if err := ops.Serialize(encryptedData); err != nil {
+			return nil, err
+		}
+	}
+
+	if hints == nil {
+		hints = &openpgp.FileHints{}
+	}
+
+	w := encryptedData
+	if signer != nil {
+		// If we need to write a signature packet after the literal
+		// data then we need to stop literalData from closing
+		// encryptedData.
+		w = noOpCloser{encryptedData}
+	}
+	var epochSeconds uint32
+	if !hints.ModTime.IsZero() {
+		epochSeconds = uint32(hints.ModTime.Unix())
+	}
+	literalData, err := packet.SerializeLiteral(w, hints.IsBinary, hints.FileName, epochSeconds)
+	if err != nil {
+		return nil, err
+	}
+
+	if signer != nil {
+		return signatureWriter{encryptedData, literalData, hash, hash.New(), signer, config}, nil
+	}
+	return literalData, nil
+}
+
+// signatureWriter hashes the contents of a message while passing it along to
+// literalData. When closed, it closes literalData, writes a signature packet
+// to encryptedData and then also closes encryptedData.
+type signatureWriter struct {
+	encryptedData io.WriteCloser
+	literalData   io.WriteCloser
+	hashType      crypto.Hash
+	h             hash.Hash
+	signer        *packet.PrivateKey
+	config        *packet.Config
+}
+
+func (s signatureWriter) Write(data []byte) (int, error) {
+	s.h.Write(data)
+	return s.literalData.Write(data)
+}
+
+func (s signatureWriter) Close() error {
+	sig := &packet.Signature{
+		SigType:      packet.SigTypeBinary,
+		PubKeyAlgo:   s.signer.PubKeyAlgo,
+		Hash:         s.hashType,
+		CreationTime: s.config.Now(),
+		IssuerKeyId:  &s.signer.KeyId,
+	}
+
+	if err := sig.Sign(s.h, s.signer, s.config); err != nil {
+		return err
+	}
+	if err := s.literalData.Close(); err != nil {
+		return err
+	}
+	if err := sig.Serialize(s.encryptedData); err != nil {
+		return err
+	}
+	return s.encryptedData.Close()
+}
+
+// noOpCloser is like an ioutil.NopCloser, but for an io.Writer.
+type noOpCloser struct {
+	w io.Writer
+}
+
+func (c noOpCloser) Write(data []byte) (n int, err error) {
+	return c.w.Write(data)
+}
+
+func (c noOpCloser) Close() error {
+	return nil
 }
