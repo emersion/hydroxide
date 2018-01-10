@@ -106,7 +106,7 @@ func generateUnencryptedKey(cipher packet.CipherFunction, config *packet.Config)
 	}, nil
 }
 
-func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, signer *packet.PrivateKey, config *packet.Config) (plaintext io.WriteCloser, err error) {
+func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, signer *packet.PrivateKey, hints *openpgp.FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
 	// From https://github.com/golang/crypto/blob/master/openpgp/write.go#L172
 
 	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, symKey.CipherFunc, symKey.Key, config)
@@ -129,6 +129,10 @@ func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, sign
 		}
 	}
 
+	if hints == nil {
+		hints = &openpgp.FileHints{}
+	}
+
 	w := encryptedData
 	if signer != nil {
 		// If we need to write a signature packet after the literal
@@ -136,8 +140,11 @@ func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, sign
 		// encryptedData.
 		w = noOpCloser{encryptedData}
 	}
-
-	literalData, err := packet.SerializeLiteral(w, false, "", 0)
+	var epochSeconds uint32
+	if !hints.ModTime.IsZero() {
+		epochSeconds = uint32(hints.ModTime.Unix())
+	}
+	literalData, err := packet.SerializeLiteral(w, hints.IsBinary, hints.FileName, epochSeconds)
 	if err != nil {
 		return nil, err
 	}

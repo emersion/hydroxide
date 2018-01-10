@@ -302,7 +302,7 @@ func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (
 	encoded := new(bytes.Buffer)
 	ciphertext := base64.NewEncoder(base64.StdEncoding, encoded)
 
-	cleartext, err := symetricallyEncrypt(ciphertext, key, signer, config)
+	cleartext, err := symetricallyEncrypt(ciphertext, key, signer, nil, config)
 	if err != nil {
 		return nil, err
 	}
