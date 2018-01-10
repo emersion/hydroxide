@@ -271,9 +271,7 @@ func (w *outgoingMessageWriter) Close() error {
 }
 
 // Encrypt encrypts the data that will be written to the returned
-// io.WriteCloser.
-//
-// The signed parameter is ignored for now.
+// io.WriteCloser, and optionally signs it.
 func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (io.WriteCloser, error) {
 	set.MIMEType = mimeType
 
