@@ -16,46 +16,60 @@ var (
 	messagesBucket = []byte("messages")
 )
 
+func userMessage(b *bolt.Bucket, apiID string) (*protonmail.Message, error) {
+	k := []byte(apiID)
+	v := b.Get(k)
+	if v == nil {
+		return nil, ErrNotFound
+	}
+
+	msg := &protonmail.Message{}
+	err := json.Unmarshal(v, msg)
+	return msg, err
+}
+
+func userCreateMessage(b *bolt.Bucket, msg *protonmail.Message) error {
+	k := []byte(msg.ID)
+	v, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return b.Put(k, v)
+}
+
+func userSync(tx *bolt.Tx, messages []*protonmail.Message) error {
+	b, err := tx.CreateBucketIfNotExists(messagesBucket)
+	if err != nil {
+		return err
+	}
+
+	for _, msg := range messages {
+		if err := userCreateMessage(b, msg); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type User struct {
 	db *bolt.DB
 }
 
-func (u *User) Mailbox(name string) (*Mailbox, error) {
+func (u *User) Mailbox(labelID string) (*Mailbox, error) {
 	err := u.db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists(mailboxesBucket)
 		if err != nil {
 			return err
 		}
-		_, err = b.CreateBucketIfNotExists([]byte(name))
+		_, err = b.CreateBucketIfNotExists([]byte(labelID))
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &Mailbox{name, u}, nil
-}
-
-func (u *User) sync(messages []*protonmail.Message) error {
-	return u.db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(messagesBucket)
-		if err != nil {
-			return err
-		}
-
-		for _, msg := range messages {
-			k := []byte(msg.ID)
-			v, err := json.Marshal(msg)
-			if err != nil {
-				return err
-			}
-			if err := b.Put(k, v); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+	return &Mailbox{labelID, u}, nil
 }
 
 func (u *User) Message(apiID string) (*protonmail.Message, error) {
@@ -66,14 +80,9 @@ func (u *User) Message(apiID string) (*protonmail.Message, error) {
 			return ErrNotFound
 		}
 
-		k := []byte(apiID)
-		v := b.Get(k)
-		if v == nil {
-			return ErrNotFound
-		}
-
-		msg = &protonmail.Message{}
-		return json.Unmarshal(v, msg)
+		var err error
+		msg, err = userMessage(b, apiID)
+		return err
 	})
 	return msg, err
 }
@@ -81,6 +90,117 @@ func (u *User) Message(apiID string) (*protonmail.Message, error) {
 func (u *User) ResetMessages() error {
 	return u.db.Update(func(tx *bolt.Tx) error {
 		return tx.DeleteBucket(messagesBucket)
+	})
+}
+
+func (u *User) CreateMessage(msg *protonmail.Message) error {
+	return u.db.Update(func(tx *bolt.Tx) error {
+		messages, err := tx.CreateBucketIfNotExists(messagesBucket)
+		if err != nil {
+			return err
+		}
+
+		if err := userCreateMessage(messages, msg); err != nil {
+			return err
+		}
+
+		mailboxes, err := tx.CreateBucketIfNotExists(mailboxesBucket)
+		if err != nil {
+			return err
+		}
+		for _, labelID := range msg.LabelIDs {
+			mbox, err := mailboxes.CreateBucketIfNotExists([]byte(labelID))
+			if err != nil {
+				return err
+			}
+
+			if err := mailboxCreateMessage(mbox, msg.ID); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+func (u *User) UpdateMessage(update *protonmail.EventMessageUpdate) error {
+	return u.db.Update(func(tx *bolt.Tx) error {
+		messages := tx.Bucket(messagesBucket)
+		if messages == nil {
+			return errors.New("cannot update message in local DB: messages bucket doesn't exist")
+		}
+
+		msg, err := userMessage(messages, update.ID)
+		if err != nil {
+			return err
+		}
+
+		addedLabels, removedLabels := update.DiffLabelIDs(msg.LabelIDs)
+
+		mailboxes, err := tx.CreateBucketIfNotExists(mailboxesBucket)
+		if err != nil {
+			return err
+		}
+		for _, labelID := range addedLabels {
+			mbox, err := mailboxes.CreateBucketIfNotExists([]byte(labelID))
+			if err != nil {
+				return err
+			}
+
+			if err := mailboxCreateMessage(mbox, update.ID); err != nil {
+				return err
+			}
+		}
+		for _, labelID := range removedLabels {
+			mbox := mailboxes.Bucket([]byte(labelID))
+			if mbox == nil {
+				continue
+			}
+
+			if err := mailboxDeleteMessage(mbox, update.ID); err != nil {
+				return err
+			}
+		}
+
+		update.Patch(msg)
+		return userCreateMessage(messages, msg)
+	})
+}
+
+func (u *User) DeleteMessage(apiID string) error {
+	return u.db.Update(func(tx *bolt.Tx) error {
+		messages:= tx.Bucket(messagesBucket)
+		if messages == nil {
+			return nil
+		}
+
+		msg, err := userMessage(messages, apiID)
+		if err == ErrNotFound {
+			return nil
+		} else if err != nil {
+			return err
+		}
+
+		if err := messages.Delete([]byte(apiID)); err != nil {
+			return err
+		}
+
+		mailboxes := tx.Bucket(mailboxesBucket)
+		if mailboxes == nil {
+			return nil
+		}
+		for _, labelID := range msg.LabelIDs {
+			mbox := mailboxes.Bucket([]byte(labelID))
+			if mbox == nil {
+				continue
+			}
+
+			if err := mailboxDeleteMessage(mbox, msg.ID); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 }
 

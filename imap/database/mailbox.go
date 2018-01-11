@@ -20,8 +20,33 @@ func unserializeUID(b []byte) uint32 {
 	return binary.BigEndian.Uint32(b)
 }
 
+func mailboxCreateMessage(b *bolt.Bucket, apiID string) error {
+	want := []byte(apiID)
+	c := b.Cursor()
+	for k, v := c.First(); k != nil; k, v = c.Next() {
+		if bytes.Equal(v, want) {
+			return nil
+		}
+	}
+
+	id, _ := b.NextSequence()
+	uid := uint32(id)
+	return b.Put(serializeUID(uid), want)
+}
+
+func mailboxDeleteMessage(b *bolt.Bucket, apiID string) error {
+	want := []byte(apiID)
+	c := b.Cursor()
+	for k, v := c.First(); k != nil; k, v = c.Next() {
+		if bytes.Equal(v, want) {
+			return b.Delete(k)
+		}
+	}
+	return nil
+}
+
 type Mailbox struct {
-	name string
+	labelID string
 	u *User
 }
 
@@ -30,7 +55,7 @@ func (mbox *Mailbox) bucket(tx *bolt.Tx) (*bolt.Bucket, error) {
 	if b == nil {
 		return nil, errors.New("cannot find mailboxes bucket")
 	}
-	b = b.Bucket([]byte(mbox.name))
+	b = b.Bucket([]byte(mbox.labelID))
 	if b == nil {
 		return nil, errors.New("cannot find mailbox bucket")
 	}
@@ -38,40 +63,20 @@ func (mbox *Mailbox) bucket(tx *bolt.Tx) (*bolt.Bucket, error) {
 }
 
 func (mbox *Mailbox) Sync(messages []*protonmail.Message) error {
-	err := mbox.u.db.Update(func(tx *bolt.Tx) error {
+	return mbox.u.db.Update(func(tx *bolt.Tx) error {
 		b, err := mbox.bucket(tx)
 		if err != nil {
 			return err
 		}
 
 		for _, msg := range messages {
-			want := []byte(msg.ID)
-			c := b.Cursor()
-			found := false
-			for k, v := c.First(); k != nil; k, v = c.Next() {
-				if bytes.Equal(v, want) {
-					found = true
-					break
-				}
-			}
-			if found {
-				continue
-			}
-
-			id, _ := b.NextSequence()
-			uid := uint32(id)
-			if err := b.Put(serializeUID(uid), want); err != nil {
+			if err := mailboxCreateMessage(b, msg.ID); err != nil {
 				return err
 			}
 		}
 
-		return nil
+		return userSync(tx, messages)
 	})
-	if err != nil {
-		return err
-	}
-
-	return mbox.u.sync(messages)
 }
 
 func (mbox *Mailbox) UidNext() (uint32, error) {
@@ -181,7 +186,7 @@ func (mbox *Mailbox) Reset() error {
 		if b == nil {
 			return errors.New("cannot find mailboxes bucket")
 		}
-		k := []byte(mbox.name)
+		k := []byte(mbox.labelID)
 		if err := b.DeleteBucket(k); err != nil {
 			return err
 		}

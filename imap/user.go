@@ -168,28 +168,42 @@ func (u *user) receiveEvents(events <-chan *protonmail.Event) {
 				log.Printf("cannot reinitialize mailboxes: %v", err)
 			}
 		} else {
+			for _, eventMessage := range event.Messages {
+				switch eventMessage.Action {
+				case protonmail.EventCreate:
+					if err := u.db.CreateMessage(eventMessage.Created); err != nil {
+						log.Printf("cannot handle create event for message %s: cannot create message in local DB: %v", eventMessage.ID, err)
+						break
+					}
+
+					// TODO: send updates
+				case protonmail.EventUpdate:
+					// No-op
+				case protonmail.EventUpdateFlags:
+					if err := u.db.UpdateMessage(eventMessage.Updated); err != nil {
+						log.Printf("cannot handle update event for message %s: cannot update message in local DB: %v", eventMessage.ID, err)
+						break
+					}
+
+					// TODO: send updates
+				case protonmail.EventDelete:
+					if err := u.db.DeleteMessage(eventMessage.ID); err != nil {
+						log.Printf("cannot handle delete event for message %s: cannot delete message from local DB: %v", eventMessage.ID, err)
+						break
+					}
+
+					// TODO: send updates
+				}
+			}
+
 			u.locker.Lock()
 			for _, count := range event.MessageCounts {
 				if mbox, ok := u.mailboxes[count.LabelID]; ok {
 					mbox.total = count.Total
 					mbox.unread = count.Unread
-					// TODO: send update
 				}
 			}
 			u.locker.Unlock()
-
-			for _, eventMessage := range event.Messages {
-				switch eventMessage.Action {
-				case protonmail.EventCreate:
-					// TODO
-				case protonmail.EventUpdate:
-					// TODO
-				case protonmail.EventUpdateFlags:
-					// TODO
-				case protonmail.EventDelete:
-					// TODO
-				}
-			}
 		}
 	}
 }
