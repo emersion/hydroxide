@@ -335,7 +335,7 @@ func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObje
 func (ab *addressBook) receiveEvents(events <-chan *protonmail.Event) {
 	for event := range events {
 		ab.locker.Lock()
-		if event.Refresh == 1 {
+		if event.Refresh&protonmail.EventRefreshContacts != 0 {
 			ab.cache = make(map[string]*addressObject)
 			ab.total = -1
 		} else if len(event.Contacts) > 0 {

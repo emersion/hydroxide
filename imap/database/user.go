@@ -78,6 +78,16 @@ func (u *User) Message(apiID string) (*protonmail.Message, error) {
 	return msg, err
 }
 
+func (u *User) ResetMessages() error {
+	return u.db.Update(func(tx *bolt.Tx) error {
+		return tx.DeleteBucket(messagesBucket)
+	})
+}
+
+func (u *User) Close() error {
+	return u.db.Close()
+}
+
 func Open(path string) (*User, error) {
 	db, err := bolt.Open(path, 0700, nil)
 	if err != nil {

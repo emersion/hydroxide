@@ -1,6 +1,9 @@
 package imap
 
 import (
+	"log"
+	"sync"
+
 	"golang.org/x/crypto/openpgp"
 	"github.com/emersion/go-imap"
 	imapbackend "github.com/emersion/go-imap/backend"
@@ -31,6 +34,8 @@ type user struct {
 	privateKeys openpgp.EntityList
 
 	db *database.User
+
+	locker sync.Mutex
 	mailboxes map[string]*mailbox
 }
 
@@ -39,7 +44,6 @@ func newUser(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.Entit
 		c: c,
 		u: u,
 		privateKeys: privateKeys,
-		mailboxes: make(map[string]*mailbox),
 	}
 
 	db, err := database.Open(u.Name+".db")
@@ -48,34 +52,49 @@ func newUser(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.Entit
 	}
 	uu.db = db
 
+	if err := uu.initMailboxes(); err != nil {
+		return nil, err
+	}
+
+	// TODO: go uu.receiveEvents(events)
+
+	return uu, nil
+}
+
+func (u *user) initMailboxes() error {
+	u.locker.Lock()
+	defer u.locker.Unlock()
+
+	u.mailboxes = make(map[string]*mailbox)
+
 	for _, data := range systemMailboxes {
-		mboxDB, err := db.Mailbox(data.label)
+		mboxDB, err := u.db.Mailbox(data.label)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		uu.mailboxes[data.label] = &mailbox{
+		u.mailboxes[data.label] = &mailbox{
 			name: data.name,
 			label: data.label,
 			flags: data.flags,
-			u: uu,
+			u: u,
 			db: mboxDB,
 		}
 	}
 
-	counts, err := c.CountMessages("")
+	counts, err := u.c.CountMessages("")
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, count := range counts {
-		if mbox, ok := uu.mailboxes[count.LabelID]; ok {
+		if mbox, ok := u.mailboxes[count.LabelID]; ok {
 			mbox.total = count.Total
 			mbox.unread = count.Unread
 		}
 	}
 
-	return uu, nil
+	return nil
 }
 
 func (u *user) Username() string {
@@ -83,6 +102,9 @@ func (u *user) Username() string {
 }
 
 func (u *user) ListMailboxes(subscribed bool) ([]imapbackend.Mailbox, error) {
+	u.locker.Lock()
+	defer u.locker.Unlock()
+
 	list := make([]imapbackend.Mailbox, 0, len(u.mailboxes))
 	for _, mbox := range u.mailboxes {
 		list = append(list, mbox)
@@ -91,6 +113,9 @@ func (u *user) ListMailboxes(subscribed bool) ([]imapbackend.Mailbox, error) {
 }
 
 func (u *user) GetMailbox(name string) (imapbackend.Mailbox, error) {
+	u.locker.Lock()
+	defer u.locker.Unlock()
+
 	for _, mbox := range u.mailboxes {
 		if mbox.name == name {
 			return mbox, nil
@@ -112,8 +137,59 @@ func (u *user) RenameMailbox(existingName, newName string) error {
 }
 
 func (u *user) Logout() error {
+	if err := u.db.Close(); err != nil {
+		return err
+	}
+
 	u.c = nil
 	u.u = nil
 	u.privateKeys = nil
 	return nil
+}
+
+func (u *user) receiveEvents(events <-chan *protonmail.Event) {
+	for event := range events {
+		if event.Refresh&protonmail.EventRefreshMail != 0 {
+			log.Println("Reinitializing the whole IMAP database")
+
+			u.locker.Lock()
+			for _, mbox := range u.mailboxes {
+				if err := mbox.reset(); err != nil {
+					log.Printf("cannot reset mailbox %s: %v", mbox.name, err)
+				}
+			}
+			u.locker.Unlock()
+
+			if err := u.db.ResetMessages(); err != nil {
+				log.Printf("cannot reset user: %v", err)
+			}
+
+			if err := u.initMailboxes(); err != nil {
+				log.Printf("cannot reinitialize mailboxes: %v", err)
+			}
+		} else {
+			u.locker.Lock()
+			for _, count := range event.MessageCounts {
+				if mbox, ok := u.mailboxes[count.LabelID]; ok {
+					mbox.total = count.Total
+					mbox.unread = count.Unread
+					// TODO: send update
+				}
+			}
+			u.locker.Unlock()
+
+			for _, eventMessage := range event.Messages {
+				switch eventMessage.Action {
+				case protonmail.EventCreate:
+					// TODO
+				case protonmail.EventUpdate:
+					// TODO
+				case protonmail.EventUpdateFlags:
+					// TODO
+				case protonmail.EventDelete:
+					// TODO
+				}
+			}
+		}
+	}
 }

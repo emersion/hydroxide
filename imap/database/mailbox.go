@@ -174,3 +174,18 @@ func (mbox *Mailbox) ForEach(f func(seqNum, uid uint32, apiID string) error) err
 		return nil
 	})
 }
+
+func (mbox *Mailbox) Reset() error {
+	return mbox.u.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(mailboxesBucket)
+		if b == nil {
+			return errors.New("cannot find mailboxes bucket")
+		}
+		k := []byte(mbox.name)
+		if err := b.DeleteBucket(k); err != nil {
+			return err
+		}
+		_, err := b.CreateBucket(k)
+		return err
+	})
+}

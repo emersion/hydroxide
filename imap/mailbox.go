@@ -130,6 +130,15 @@ func (mbox *mailbox) init() error {
 	return nil
 }
 
+func (mbox *mailbox) reset() error {
+	mbox.initializedLock.Lock()
+	defer mbox.initializedLock.Unlock()
+
+	mbox.initialized = false
+
+	return mbox.db.Reset()
+}
+
 func (mbox *mailbox) fetchMessage(isUid bool, id uint32, items []imap.FetchItem) (*imap.Message, error) {
 	var apiID string
 	var err error

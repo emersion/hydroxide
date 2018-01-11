@@ -4,10 +4,17 @@ import (
 	"net/http"
 )
 
+type EventRefresh int
+
+const (
+	EventRefreshMail EventRefresh = 1 << iota
+	EventRefreshContacts
+)
+
 type Event struct {
 	ID      string `json:"EventID"`
-	Refresh int
-	//Messages
+	Refresh EventRefresh
+	Messages []*EventMessage
 	Contacts []*EventContact
 	//ContactEmails
 	//Labels
@@ -15,7 +22,7 @@ type Event struct {
 	//Members
 	//Domains
 	//Organization
-	//MessageCounts
+	MessageCounts []*MessageCount
 	//ConversationCounts
 	//UsedSpace
 	Notices []string
@@ -27,7 +34,16 @@ const (
 	EventDelete EventAction = iota
 	EventCreate
 	EventUpdate
+
+	// For messages
+	EventUpdateFlags
 )
+
+type EventMessage struct {
+	ID      string
+	Action  EventAction
+	Message *Message
+}
 
 type EventContact struct {
 	ID      string
