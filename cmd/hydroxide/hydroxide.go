@@ -15,6 +15,7 @@ import (
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
+	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/protonmail"
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
@@ -155,6 +156,8 @@ func main() {
 			port = "8080"
 		}
 
+		eventsManager := events.NewManager()
+
 		sessions := auth.NewManager(newClient)
 		handlers := make(map[string]http.Handler)
 
@@ -183,9 +186,9 @@ func main() {
 
 				h, ok := handlers[username]
 				if !ok {
-					events := make(chan *protonmail.Event)
-					go receiveEvents(c, "", events)
-					h = carddav.NewHandler(c, privateKeys, events)
+					ch := make(chan *protonmail.Event)
+					eventsManager.Register(c, username, ch)
+					h = carddav.NewHandler(c, privateKeys, ch)
 
 					handlers[username] = h
 				}
