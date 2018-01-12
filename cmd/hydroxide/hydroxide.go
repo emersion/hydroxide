@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	imapmove "github.com/emersion/go-imap-move"
 	imapserver "github.com/emersion/go-imap/server"
 	imapspacialuse "github.com/emersion/go-imap-specialuse"
 	"github.com/emersion/go-smtp"
@@ -169,6 +170,7 @@ func main() {
 		s.AllowInsecureAuth = true // TODO: remove this
 		//s.Debug = os.Stdout
 		s.Enable(imapspacialuse.NewExtension())
+		s.Enable(imapmove.NewExtension())
 
 		log.Println("Starting IMAP server at", s.Addr)
 		log.Fatal(s.ListenAndServe())
