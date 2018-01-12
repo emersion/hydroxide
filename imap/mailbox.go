@@ -141,6 +141,14 @@ func (mbox *mailbox) reset() error {
 	return mbox.db.Reset()
 }
 
+func (mbox *mailbox) fetchFlags(msg *protonmail.Message) []string {
+	flags := fetchFlags(msg)
+	if _, ok := mbox.deleted[msg.ID]; ok {
+		flags = append(flags, imap.DeletedFlag)
+	}
+	return flags
+}
+
 func (mbox *mailbox) fetchMessage(isUid bool, id uint32, items []imap.FetchItem) (*imap.Message, error) {
 	var apiID string
 	var err error
@@ -175,7 +183,7 @@ func (mbox *mailbox) fetchMessage(isUid bool, id uint32, items []imap.FetchItem)
 			}
 			fetched.BodyStructure = bs
 		case imap.FetchFlags:
-			fetched.Flags = fetchFlags(msg)
+			fetched.Flags = mbox.fetchFlags(msg)
 		case imap.FetchInternalDate:
 			fetched.InternalDate = time.Unix(msg.Time, 0)
 		case imap.FetchRFC822Size:
@@ -271,7 +279,7 @@ func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint3
 		}
 
 		flags := make(map[string]bool)
-		for _, flag := range fetchFlags(msg) {
+		for _, flag := range mbox.fetchFlags(msg) {
 			flags[flag] = true
 		}
 		for _, f := range c.WithFlags {
@@ -405,6 +413,7 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 				err = mbox.u.c.UnlabelMessages(protonmail.LabelStarred, apiIDs)
 			}
 		case imap.DeletedFlag:
+			// TODO: send updates
 			switch op {
 			case imap.SetFlags, imap.AddFlags:
 				for _, apiID := range apiIDs {
