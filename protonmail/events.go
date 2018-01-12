@@ -51,8 +51,6 @@ type EventMessage struct {
 }
 
 type EventMessageUpdate struct {
-	ID string
-
 	IsRead       *int
 	Type         *MessageType
 	Time         int64
@@ -98,10 +96,6 @@ func (update *EventMessageUpdate) DiffLabelIDs(current []string) (added, removed
 }
 
 func (update *EventMessageUpdate) Patch(msg *Message) {
-	if update.ID != msg.ID {
-		return
-	}
-
 	msg.Time = update.Time
 	if update.IsRead != nil {
 		msg.IsRead = *update.IsRead
@@ -151,8 +145,10 @@ func (em *EventMessage) UnmarshalJSON(b []byte) error {
 	em.Action = raw.Action
 	switch raw.Action {
 	case EventCreate:
+		em.Created = new(Message)
 		return json.Unmarshal(raw.Message, em.Created)
 	case EventUpdate, EventUpdateFlags:
+		em.Updated = new(EventMessageUpdate)
 		return json.Unmarshal(raw.Message, em.Updated)
 	}
 	return nil

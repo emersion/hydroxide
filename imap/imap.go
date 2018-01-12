@@ -6,12 +6,14 @@ import (
 	imapbackend "github.com/emersion/go-imap/backend"
 
 	"github.com/emersion/hydroxide/auth"
+	"github.com/emersion/hydroxide/events"
 )
 
 var errNotYetImplemented = errors.New("not yet implemented")
 
 type backend struct {
 	sessions *auth.Manager
+	eventsManager *events.Manager
 }
 
 func (be *backend) Login(username, password string) (imapbackend.User, error) {
@@ -27,9 +29,9 @@ func (be *backend) Login(username, password string) (imapbackend.User, error) {
 
 	// TODO: decrypt private keys in u.Addresses
 
-	return newUser(c, u, privateKeys)
+	return newUser(be, c, u, privateKeys)
 }
 
-func New(sessions *auth.Manager) imapbackend.Backend {
-	return &backend{sessions}
+func New(sessions *auth.Manager, eventsManager *events.Manager) imapbackend.Backend {
+	return &backend{sessions, eventsManager}
 }

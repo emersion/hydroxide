@@ -225,7 +225,9 @@ func (mbox *mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fe
 
 		for i := start; i <= stop; i++ {
 			msg, err := mbox.fetchMessage(uid, i, items)
-			if err != nil {
+			if err == database.ErrNotFound {
+				continue
+			} else if err != nil {
 				return err
 			}
 			if msg != nil {

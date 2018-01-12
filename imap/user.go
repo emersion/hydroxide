@@ -37,9 +37,11 @@ type user struct {
 
 	locker sync.Mutex
 	mailboxes map[string]*mailbox
+
+	done chan<- struct{}
 }
 
-func newUser(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList) (*user, error) {
+func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList) (*user, error) {
 	uu := &user{
 		c: c,
 		u: u,
@@ -56,7 +58,11 @@ func newUser(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.Entit
 		return nil, err
 	}
 
-	// TODO: go uu.receiveEvents(events)
+	done := make(chan struct{})
+	uu.done = done
+	ch := make(chan *protonmail.Event)
+	go uu.receiveEvents(ch)
+	be.eventsManager.Register(c, u.Name, ch, done)
 
 	return uu, nil
 }
@@ -137,6 +143,8 @@ func (u *user) RenameMailbox(existingName, newName string) error {
 }
 
 func (u *user) Logout() error {
+	close(u.done)
+
 	if err := u.db.Close(); err != nil {
 		return err
 	}
@@ -171,22 +179,23 @@ func (u *user) receiveEvents(events <-chan *protonmail.Event) {
 			for _, eventMessage := range event.Messages {
 				switch eventMessage.Action {
 				case protonmail.EventCreate:
+					log.Println("Received create event for message", eventMessage.ID)
 					if err := u.db.CreateMessage(eventMessage.Created); err != nil {
 						log.Printf("cannot handle create event for message %s: cannot create message in local DB: %v", eventMessage.ID, err)
 						break
 					}
 
 					// TODO: send updates
-				case protonmail.EventUpdate:
-					// No-op
-				case protonmail.EventUpdateFlags:
-					if err := u.db.UpdateMessage(eventMessage.Updated); err != nil {
+				case protonmail.EventUpdate, protonmail.EventUpdateFlags:
+					log.Println("Received update event for message", eventMessage.ID)
+					if err := u.db.UpdateMessage(eventMessage.ID, eventMessage.Updated); err != nil {
 						log.Printf("cannot handle update event for message %s: cannot update message in local DB: %v", eventMessage.ID, err)
 						break
 					}
 
 					// TODO: send updates
 				case protonmail.EventDelete:
+					log.Println("Received delete event for message", eventMessage.ID)
 					if err := u.db.DeleteMessage(eventMessage.ID); err != nil {
 						log.Printf("cannot handle delete event for message %s: cannot delete message from local DB: %v", eventMessage.ID, err)
 						break

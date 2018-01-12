@@ -32,10 +32,11 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func receiveEvents(c *protonmail.Client, last string, ch chan<- *protonmail.Event) {
+func receiveEvents(c *protonmail.Client, ch chan<- *protonmail.Event) {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 
+	var last string
 	for range t.C {
 		event, err := c.GetEvent(last)
 		if err != nil {
@@ -160,8 +161,9 @@ func main() {
 		}
 
 		sessions := auth.NewManager(newClient)
+		eventsManager := events.NewManager()
 
-		be := imapbackend.New(sessions)
+		be := imapbackend.New(sessions, eventsManager)
 		s := imapserver.New(be)
 		s.Addr = "127.0.0.1:" + port
 		s.AllowInsecureAuth = true // TODO: remove this
@@ -176,9 +178,8 @@ func main() {
 			port = "8080"
 		}
 
-		eventsManager := events.NewManager()
-
 		sessions := auth.NewManager(newClient)
+		eventsManager := events.NewManager()
 		handlers := make(map[string]http.Handler)
 
 		s := &http.Server{
@@ -207,7 +208,7 @@ func main() {
 				h, ok := handlers[username]
 				if !ok {
 					ch := make(chan *protonmail.Event)
-					eventsManager.Register(c, username, ch)
+					eventsManager.Register(c, username, ch, nil)
 					h = carddav.NewHandler(c, privateKeys, ch)
 
 					handlers[username] = h

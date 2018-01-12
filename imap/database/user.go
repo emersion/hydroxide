@@ -123,14 +123,14 @@ func (u *User) CreateMessage(msg *protonmail.Message) error {
 	})
 }
 
-func (u *User) UpdateMessage(update *protonmail.EventMessageUpdate) error {
+func (u *User) UpdateMessage(apiID string, update *protonmail.EventMessageUpdate) error {
 	return u.db.Update(func(tx *bolt.Tx) error {
 		messages := tx.Bucket(messagesBucket)
 		if messages == nil {
 			return errors.New("cannot update message in local DB: messages bucket doesn't exist")
 		}
 
-		msg, err := userMessage(messages, update.ID)
+		msg, err := userMessage(messages, apiID)
 		if err != nil {
 			return err
 		}
@@ -147,7 +147,7 @@ func (u *User) UpdateMessage(update *protonmail.EventMessageUpdate) error {
 				return err
 			}
 
-			if err := mailboxCreateMessage(mbox, update.ID); err != nil {
+			if err := mailboxCreateMessage(mbox, apiID); err != nil {
 				return err
 			}
 		}
@@ -157,7 +157,7 @@ func (u *User) UpdateMessage(update *protonmail.EventMessageUpdate) error {
 				continue
 			}
 
-			if err := mailboxDeleteMessage(mbox, update.ID); err != nil {
+			if err := mailboxDeleteMessage(mbox, apiID); err != nil {
 				return err
 			}
 		}
