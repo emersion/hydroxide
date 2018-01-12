@@ -348,7 +348,12 @@ func (mbox *mailbox) CreateMessage(flags []string, date time.Time, body imap.Lit
 		return errors.New("cannot create messages outside the Drafts mailbox")
 	}
 
-	return errNotYetImplemented
+	if err := mbox.init(); err != nil {
+		return err
+	}
+
+	_, err := createMessage(mbox.u.c, mbox.u.u, mbox.u.privateKeys, body)
+	return err
 }
 
 func (mbox *mailbox) fromSeqSet(isUID bool, seqSet *imap.SeqSet) ([]string, error) {
