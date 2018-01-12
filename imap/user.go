@@ -61,7 +61,7 @@ func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys 
 	done := make(chan struct{})
 	uu.done = done
 	ch := make(chan *protonmail.Event)
-	go uu.receiveEvents(ch)
+	go uu.receiveEvents(be.updates, ch)
 	be.eventsManager.Register(c, u.Name, ch, done)
 
 	return uu, nil
@@ -118,6 +118,12 @@ func (u *user) ListMailboxes(subscribed bool) ([]imapbackend.Mailbox, error) {
 	return list, nil
 }
 
+func (u *user) getMailboxByLabel(labelID string) *mailbox {
+	u.locker.Lock()
+	defer u.locker.Unlock()
+	return u.mailboxes[labelID]
+}
+
 func (u *user) GetMailbox(name string) (imapbackend.Mailbox, error) {
 	u.locker.Lock()
 	defer u.locker.Unlock()
@@ -155,7 +161,7 @@ func (u *user) Logout() error {
 	return nil
 }
 
-func (u *user) receiveEvents(events <-chan *protonmail.Event) {
+func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonmail.Event) {
 	for event := range events {
 		if event.Refresh&protonmail.EventRefreshMail != 0 {
 			log.Println("Reinitializing the whole IMAP database")
@@ -180,28 +186,96 @@ func (u *user) receiveEvents(events <-chan *protonmail.Event) {
 				switch eventMessage.Action {
 				case protonmail.EventCreate:
 					log.Println("Received create event for message", eventMessage.ID)
-					if err := u.db.CreateMessage(eventMessage.Created); err != nil {
+					seqNums, err := u.db.CreateMessage(eventMessage.Created)
+					if err != nil {
 						log.Printf("cannot handle create event for message %s: cannot create message in local DB: %v", eventMessage.ID, err)
 						break
 					}
 
-					// TODO: send updates
+					// TODO: what if the message was already in the local DB?
+					for labelID, seqNum := range seqNums {
+						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
+							update := new(imapbackend.MailboxUpdate)
+							update.Username = u.u.Name
+							update.Mailbox = mbox.name
+							update.MailboxStatus = imap.NewMailboxStatus(mbox.name, []imap.StatusItem{imap.StatusMessages})
+							update.MailboxStatus.Messages = seqNum
+							updates <- update
+						}
+					}
 				case protonmail.EventUpdate, protonmail.EventUpdateFlags:
 					log.Println("Received update event for message", eventMessage.ID)
-					if err := u.db.UpdateMessage(eventMessage.ID, eventMessage.Updated); err != nil {
+					createdSeqNums, deletedSeqNums, err := u.db.UpdateMessage(eventMessage.ID, eventMessage.Updated)
+					if err != nil {
 						log.Printf("cannot handle update event for message %s: cannot update message in local DB: %v", eventMessage.ID, err)
 						break
 					}
 
-					// TODO: send updates
+					for labelID, seqNum := range createdSeqNums {
+						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
+							update := new(imapbackend.MailboxUpdate)
+							update.Username = u.u.Name
+							update.Mailbox = mbox.name
+							update.MailboxStatus = imap.NewMailboxStatus(mbox.name, []imap.StatusItem{imap.StatusMessages})
+							update.MailboxStatus.Messages = seqNum
+							updates <- update
+						}
+					}
+					for labelID, seqNum := range deletedSeqNums {
+						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
+							update := new(imapbackend.ExpungeUpdate)
+							update.Username = u.u.Name
+							update.Mailbox = mbox.name
+							update.SeqNum = seqNum
+							updates <- update
+						}
+					}
+
+					// Send message updates
+					msg, err := u.db.Message(eventMessage.ID)
+					if err != nil {
+						log.Printf("cannot handle update event for message %s: cannot get updated message from local DB: %v", eventMessage.ID, err)
+						break
+					}
+					for _, labelID := range msg.LabelIDs {
+						if _, created := createdSeqNums[labelID]; created {
+							// This message has been added to the label's mailbox
+							// No need to send a message update
+							continue
+						}
+
+						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
+							seqNum, _, err := mbox.db.FromApiID(eventMessage.ID)
+							if err != nil {
+								log.Printf("cannot handle update event for message %s: cannot get message sequence number in %s: %v", eventMessage.ID, mbox.name, err)
+								continue
+							}
+
+							update := new(imapbackend.MessageUpdate)
+							update.Username = u.u.Name
+							update.Mailbox = mbox.name
+							update.Message = imap.NewMessage(seqNum, []imap.FetchItem{imap.FetchFlags})
+							update.Message.Flags = fetchFlags(msg)
+							updates <- update
+						}
+					}
 				case protonmail.EventDelete:
 					log.Println("Received delete event for message", eventMessage.ID)
-					if err := u.db.DeleteMessage(eventMessage.ID); err != nil {
+					seqNums, err := u.db.DeleteMessage(eventMessage.ID)
+					if err != nil {
 						log.Printf("cannot handle delete event for message %s: cannot delete message from local DB: %v", eventMessage.ID, err)
 						break
 					}
 
-					// TODO: send updates
+					for labelID, seqNum := range seqNums {
+						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
+							update := new(imapbackend.ExpungeUpdate)
+							update.Username = u.u.Name
+							update.Mailbox = mbox.name
+							update.SeqNum = seqNum
+							updates <- update
+						}
+					}
 				}
 			}
 

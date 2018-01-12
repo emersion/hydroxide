@@ -93,8 +93,9 @@ func (u *User) ResetMessages() error {
 	})
 }
 
-func (u *User) CreateMessage(msg *protonmail.Message) error {
-	return u.db.Update(func(tx *bolt.Tx) error {
+func (u *User) CreateMessage(msg *protonmail.Message) (seqNums map[string]uint32, err error) {
+	seqNums = make(map[string]uint32)
+	err = u.db.Update(func(tx *bolt.Tx) error {
 		messages, err := tx.CreateBucketIfNotExists(messagesBucket)
 		if err != nil {
 			return err
@@ -114,17 +115,22 @@ func (u *User) CreateMessage(msg *protonmail.Message) error {
 				return err
 			}
 
-			if err := mailboxCreateMessage(mbox, msg.ID); err != nil {
+			seqNum, err := mailboxCreateMessage(mbox, msg.ID)
+			if err != nil {
 				return err
 			}
+			seqNums[labelID] = seqNum
 		}
 
 		return nil
 	})
+	return
 }
 
-func (u *User) UpdateMessage(apiID string, update *protonmail.EventMessageUpdate) error {
-	return u.db.Update(func(tx *bolt.Tx) error {
+func (u *User) UpdateMessage(apiID string, update *protonmail.EventMessageUpdate) (createdSeqNums map[string]uint32, deletedSeqNums map[string]uint32, err error) {
+	createdSeqNums = make(map[string]uint32)
+	deletedSeqNums = make(map[string]uint32)
+	err = u.db.Update(func(tx *bolt.Tx) error {
 		messages := tx.Bucket(messagesBucket)
 		if messages == nil {
 			return errors.New("cannot update message in local DB: messages bucket doesn't exist")
@@ -147,9 +153,11 @@ func (u *User) UpdateMessage(apiID string, update *protonmail.EventMessageUpdate
 				return err
 			}
 
-			if err := mailboxCreateMessage(mbox, apiID); err != nil {
+			seqNum, err := mailboxCreateMessage(mbox, apiID)
+			if err != nil {
 				return err
 			}
+			createdSeqNums[labelID] = seqNum
 		}
 		for _, labelID := range removedLabels {
 			mbox := mailboxes.Bucket([]byte(labelID))
@@ -157,18 +165,22 @@ func (u *User) UpdateMessage(apiID string, update *protonmail.EventMessageUpdate
 				continue
 			}
 
-			if err := mailboxDeleteMessage(mbox, apiID); err != nil {
+			seqNum, err := mailboxDeleteMessage(mbox, apiID)
+			if err != nil {
 				return err
 			}
+			deletedSeqNums[labelID] = seqNum
 		}
 
 		update.Patch(msg)
 		return userCreateMessage(messages, msg)
 	})
+	return
 }
 
-func (u *User) DeleteMessage(apiID string) error {
-	return u.db.Update(func(tx *bolt.Tx) error {
+func (u *User) DeleteMessage(apiID string) (seqNums map[string]uint32, err error) {
+	seqNums = make(map[string]uint32)
+	err = u.db.Update(func(tx *bolt.Tx) error {
 		messages:= tx.Bucket(messagesBucket)
 		if messages == nil {
 			return nil
@@ -195,13 +207,16 @@ func (u *User) DeleteMessage(apiID string) error {
 				continue
 			}
 
-			if err := mailboxDeleteMessage(mbox, msg.ID); err != nil {
+			seqNum, err := mailboxDeleteMessage(mbox, msg.ID)
+			if err != nil {
 				return err
 			}
+			seqNums[labelID] = seqNum
 		}
 
 		return nil
 	})
+	return
 }
 
 func (u *User) Close() error {

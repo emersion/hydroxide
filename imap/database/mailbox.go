@@ -20,29 +20,33 @@ func unserializeUID(b []byte) uint32 {
 	return binary.BigEndian.Uint32(b)
 }
 
-func mailboxCreateMessage(b *bolt.Bucket, apiID string) error {
+func mailboxCreateMessage(b *bolt.Bucket, apiID string) (seqNum uint32, err error) {
 	want := []byte(apiID)
 	c := b.Cursor()
+	var n uint32 = 1
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		if bytes.Equal(v, want) {
-			return nil
+			return n, nil
 		}
+		n++
 	}
 
 	id, _ := b.NextSequence()
 	uid := uint32(id)
-	return b.Put(serializeUID(uid), want)
+	return n, b.Put(serializeUID(uid), want)
 }
 
-func mailboxDeleteMessage(b *bolt.Bucket, apiID string) error {
+func mailboxDeleteMessage(b *bolt.Bucket, apiID string) (seqNum uint32, err error) {
 	want := []byte(apiID)
 	c := b.Cursor()
+	var n uint32 = 1
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		if bytes.Equal(v, want) {
-			return b.Delete(k)
+			return n, b.Delete(k)
 		}
+		n++
 	}
-	return nil
+	return 0, nil
 }
 
 type Mailbox struct {
@@ -70,7 +74,7 @@ func (mbox *Mailbox) Sync(messages []*protonmail.Message) error {
 		}
 
 		for _, msg := range messages {
-			if err := mailboxCreateMessage(b, msg.ID); err != nil {
+			if _, err := mailboxCreateMessage(b, msg.ID); err != nil {
 				return err
 			}
 		}
@@ -93,9 +97,8 @@ func (mbox *Mailbox) UidNext() (uint32, error) {
 	return uid, err
 }
 
-func (mbox *Mailbox) FromUid(uid uint32) (string, error) {
-	var apiID string
-	err := mbox.u.db.View(func(tx *bolt.Tx) error {
+func (mbox *Mailbox) FromUid(uid uint32) (apiID string, err error) {
+	err = mbox.u.db.View(func(tx *bolt.Tx) error {
 		b, err := mbox.bucket(tx)
 		if err != nil {
 			return err
@@ -109,12 +112,11 @@ func (mbox *Mailbox) FromUid(uid uint32) (string, error) {
 		apiID = string(v)
 		return nil
 	})
-	return apiID, err
+	return
 }
 
-func (mbox *Mailbox) FromSeqNum(seqNum uint32) (string, error) {
-	var apiID string
-	err := mbox.u.db.View(func(tx *bolt.Tx) error {
+func (mbox *Mailbox) FromSeqNum(seqNum uint32) (apiID string, err error) {
+	err = mbox.u.db.View(func(tx *bolt.Tx) error {
 		b, err := mbox.bucket(tx)
 		if err != nil {
 			return err
@@ -132,12 +134,11 @@ func (mbox *Mailbox) FromSeqNum(seqNum uint32) (string, error) {
 
 		return ErrNotFound
 	})
-	return apiID, err
+	return
 }
 
-func (mbox *Mailbox) FromApiID(apiID string) (uint32, uint32, error) {
-	var seqNum, uid uint32
-	err := mbox.u.db.View(func(tx *bolt.Tx) error {
+func (mbox *Mailbox) FromApiID(apiID string) (seqNum uint32, uid uint32, err error) {
+	err = mbox.u.db.View(func(tx *bolt.Tx) error {
 		b, err := mbox.bucket(tx)
 		if err != nil {
 			return err
@@ -157,7 +158,7 @@ func (mbox *Mailbox) FromApiID(apiID string) (uint32, uint32, error) {
 
 		return ErrNotFound
 	})
-	return seqNum, uid, err
+	return
 }
 
 func (mbox *Mailbox) ForEach(f func(seqNum, uid uint32, apiID string) error) error {
