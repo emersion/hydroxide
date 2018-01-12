@@ -28,6 +28,7 @@ type mailbox struct {
 	initializedLock sync.Mutex
 
 	total, unread int
+	deleted map[string]struct{}
 }
 
 func (mbox *mailbox) Name() string {
@@ -404,7 +405,16 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 				err = mbox.u.c.UnlabelMessages(protonmail.LabelStarred, apiIDs)
 			}
 		case imap.DeletedFlag:
-			// TODO
+			switch op {
+			case imap.SetFlags, imap.AddFlags:
+				for _, apiID := range apiIDs {
+					mbox.deleted[apiID] = struct{}{}
+				}
+			case imap.RemoveFlags:
+				for _, apiID := range apiIDs {
+					delete(mbox.deleted, apiID)
+				}
+			}
 		}
 		if err != nil {
 			return err
@@ -460,5 +470,18 @@ func (mbox *mailbox) MoveMessages(uid bool, seqSet *imap.SeqSet, destName string
 }
 
 func (mbox *mailbox) Expunge() error {
-	return errNotYetImplemented // TODO
+	if err := mbox.init(); err != nil {
+		return err
+	}
+
+	apiIDs := make([]string, 0, len(mbox.deleted))
+	for apiID := range mbox.deleted {
+		apiIDs = append(apiIDs, apiID)
+	}
+
+	if err := mbox.u.c.DeleteMessages(apiIDs); err != nil {
+		return err
+	}
+
+	return nil
 }

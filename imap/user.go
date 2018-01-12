@@ -85,6 +85,7 @@ func (u *user) initMailboxes() error {
 			flags: data.flags,
 			u: u,
 			db: mboxDB,
+			deleted: make(map[string]struct{}),
 		}
 	}
 
