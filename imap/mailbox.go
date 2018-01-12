@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap"
+	imapbackend "github.com/emersion/go-imap/backend"
 
 	"github.com/emersion/hydroxide/imap/database"
 	"github.com/emersion/hydroxide/protonmail"
@@ -343,7 +344,11 @@ func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint3
 }
 
 func (mbox *mailbox) CreateMessage(flags []string, date time.Time, body imap.Literal) error {
-	return errNotYetImplemented // TODO
+	if mbox.label != protonmail.LabelDraft {
+		return errors.New("cannot create messages outside the Drafts mailbox")
+	}
+
+	return errNotYetImplemented
 }
 
 func (mbox *mailbox) fromSeqSet(isUID bool, seqSet *imap.SeqSet) ([]string, error) {
@@ -404,8 +409,49 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 	return nil
 }
 
-func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, dest string) error {
-	return errNotYetImplemented // TODO
+func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string) error {
+	if err := mbox.init(); err != nil {
+		return err
+	}
+
+	apiIDs, err := mbox.fromSeqSet(uid, seqSet)
+	if err != nil {
+		return err
+	}
+
+	dest := mbox.u.getMailboxByLabel(destName)
+	if dest == nil {
+		return imapbackend.ErrNoSuchMailbox
+	}
+
+	if err := mbox.u.c.LabelMessages(dest.label, apiIDs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (mbox *mailbox) MoveMessages(uid bool, seqSet *imap.SeqSet, destName string) error {
+	if err := mbox.init(); err != nil {
+		return err
+	}
+
+	apiIDs, err := mbox.fromSeqSet(uid, seqSet)
+	if err != nil {
+		return err
+	}
+
+	dest := mbox.u.getMailboxByLabel(destName)
+	if dest == nil {
+		return imapbackend.ErrNoSuchMailbox
+	}
+
+	if err := mbox.u.c.LabelMessages(dest.label, apiIDs); err != nil {
+		return err
+	}
+	if err := mbox.u.c.UnlabelMessages(mbox.label, apiIDs); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (mbox *mailbox) Expunge() error {
