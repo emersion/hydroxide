@@ -44,7 +44,7 @@ func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
 func (mbox *mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error) {
 	status := imap.NewMailboxStatus(mbox.name, items)
 	status.Flags = mbox.flags
-	status.PermanentFlags = []string{imap.SeenFlag, imap.AnsweredFlag, imap.FlaggedFlag, imap.DeletedFlag, imap.DraftFlag}
+	status.PermanentFlags = []string{imap.SeenFlag, imap.FlaggedFlag, imap.DeletedFlag}
 	status.UnseenSeqNum = 0 // TODO
 
 	for _, name := range items {
@@ -346,8 +346,62 @@ func (mbox *mailbox) CreateMessage(flags []string, date time.Time, body imap.Lit
 	return errNotYetImplemented // TODO
 }
 
-func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, operation imap.FlagsOp, flags []string) error {
-	return errNotYetImplemented // TODO
+func (mbox *mailbox) fromSeqSet(isUID bool, seqSet *imap.SeqSet) ([]string, error) {
+	var apiIDs []string
+	err := mbox.db.ForEach(func(seqNum, uid uint32, apiID string) error {
+		var id uint32
+		if isUID {
+			id = uid
+		} else {
+			id = seqNum
+		}
+
+		if seqSet.Contains(id) {
+			apiIDs = append(apiIDs, apiID)
+		}
+		return nil
+	})
+	return apiIDs, err
+}
+
+func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.FlagsOp, flags []string) error {
+	if err := mbox.init(); err != nil {
+		return err
+	}
+
+	apiIDs, err := mbox.fromSeqSet(uid, seqSet)
+	if err != nil {
+		return err
+	}
+
+	// TODO: imap.SetFlags should remove currently set flags
+
+	for _, flag := range flags {
+		var err error
+		switch flag {
+		case imap.SeenFlag:
+			switch op {
+			case imap.SetFlags, imap.AddFlags:
+				err = mbox.u.c.MarkMessagesRead(apiIDs)
+			case imap.RemoveFlags:
+				err = mbox.u.c.MarkMessagesUnread(apiIDs)
+			}
+		case imap.FlaggedFlag:
+			switch op {
+			case imap.SetFlags, imap.AddFlags:
+				err = mbox.u.c.LabelMessages(protonmail.LabelStarred, apiIDs)
+			case imap.RemoveFlags:
+				err = mbox.u.c.UnlabelMessages(protonmail.LabelStarred, apiIDs)
+			}
+		case imap.DeletedFlag:
+			// TODO
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, dest string) error {

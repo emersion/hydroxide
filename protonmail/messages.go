@@ -292,6 +292,63 @@ func (c *Client) UpdateDraftMessage(msg *Message) (*Message, error) {
 	return respData.Message, nil
 }
 
+func (c *Client) doMessages(action string, ids []string) error {
+	reqData := struct {
+		IDs []string
+	}{ids}
+	req, err := c.newJSONRequest(http.MethodPut, "/messages/"+action, &reqData)
+	if err != nil {
+		return err
+	}
+
+	// TODO: the response contains one response per message
+	return c.doJSON(req, nil)
+}
+
+func (c *Client) MarkMessagesRead(ids []string) error {
+	return c.doMessages("read", ids)
+}
+
+func (c *Client) MarkMessagesUnread(ids []string) error {
+	return c.doMessages("unread", ids)
+}
+
+func (c *Client) DeleteMessages(ids []string) error {
+	return c.doMessages("delete", ids)
+}
+
+func (c *Client) UndeleteMessages(ids []string) error {
+	return c.doMessages("undelete", ids)
+}
+
+func (c *Client) LabelMessages(labelID string, ids []string) error {
+	reqData := struct {
+		LabelID string
+		IDs []string
+	}{labelID, ids}
+	req, err := c.newJSONRequest(http.MethodPut, "/messages/label", &reqData)
+	if err != nil {
+		return err
+	}
+
+	// TODO: the response contains one response per message
+	return c.doJSON(req, nil)
+}
+
+func (c *Client) UnlabelMessages(labelID string, ids []string) error {
+	reqData := struct {
+		LabelID string
+		IDs []string
+	}{labelID, ids}
+	req, err := c.newJSONRequest(http.MethodPut, "/messages/unlabel", &reqData)
+	if err != nil {
+		return err
+	}
+
+	// TODO: the response contains one response per message
+	return c.doJSON(req, nil)
+}
+
 type MessageKeyPacket struct {
 	ID         string
 	KeyPackets string
