@@ -82,6 +82,11 @@ func (mbox *mailbox) Check() error {
 func (mbox *mailbox) sync() error {
 	log.Printf("Synchronizing mailbox %v...", mbox.name)
 
+	// TODO: don't do this without incrementing UIDVALIDITY
+	if err := mbox.db.Reset(); err != nil {
+		return err
+	}
+
 	filter := &protonmail.MessageFilter{
 		PageSize: 150,
 		Label: mbox.label,
@@ -362,7 +367,11 @@ func (mbox *mailbox) CreateMessage(flags []string, date time.Time, body imap.Lit
 	}
 
 	_, err := createMessage(mbox.u.c, mbox.u.u, mbox.u.privateKeys, body)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return mbox.Poll()
 }
 
 func (mbox *mailbox) fromSeqSet(isUID bool, seqSet *imap.SeqSet) ([]string, error) {
@@ -430,7 +439,7 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 		}
 	}
 
-	return nil
+	return mbox.Poll()
 }
 
 func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string) error {
@@ -443,7 +452,7 @@ func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 		return err
 	}
 
-	dest := mbox.u.getMailboxByLabel(destName)
+	dest := mbox.u.getMailbox(destName)
 	if dest == nil {
 		return imapbackend.ErrNoSuchMailbox
 	}
@@ -451,7 +460,7 @@ func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 	if err := mbox.u.c.LabelMessages(dest.label, apiIDs); err != nil {
 		return err
 	}
-	return nil
+	return mbox.Poll()
 }
 
 func (mbox *mailbox) MoveMessages(uid bool, seqSet *imap.SeqSet, destName string) error {
@@ -464,7 +473,7 @@ func (mbox *mailbox) MoveMessages(uid bool, seqSet *imap.SeqSet, destName string
 		return err
 	}
 
-	dest := mbox.u.getMailboxByLabel(destName)
+	dest := mbox.u.getMailbox(destName)
 	if dest == nil {
 		return imapbackend.ErrNoSuchMailbox
 	}
@@ -475,7 +484,7 @@ func (mbox *mailbox) MoveMessages(uid bool, seqSet *imap.SeqSet, destName string
 	if err := mbox.u.c.UnlabelMessages(mbox.label, apiIDs); err != nil {
 		return err
 	}
-	return nil
+	return mbox.Poll()
 }
 
 func (mbox *mailbox) Expunge() error {
@@ -492,5 +501,10 @@ func (mbox *mailbox) Expunge() error {
 		return err
 	}
 
+	return mbox.Poll()
+}
+
+func (mbox *mailbox) Poll() error {
+	mbox.u.poll()
 	return nil
 }

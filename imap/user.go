@@ -9,6 +9,7 @@ import (
 	imapbackend "github.com/emersion/go-imap/backend"
 	"github.com/emersion/go-imap-specialuse"
 
+	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/imap/database"
 	"github.com/emersion/hydroxide/protonmail"
 )
@@ -34,11 +35,13 @@ type user struct {
 	privateKeys openpgp.EntityList
 
 	db *database.User
+	eventsReceiver *events.Receiver
 
 	locker sync.Mutex
 	mailboxes map[string]*mailbox
 
 	done chan<- struct{}
+	eventSent chan struct{}
 }
 
 func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList) (*user, error) {
@@ -46,6 +49,7 @@ func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys 
 		c: c,
 		u: u,
 		privateKeys: privateKeys,
+		eventSent: make(chan struct{}),
 	}
 
 	db, err := database.Open(u.Name+".db")
@@ -62,7 +66,7 @@ func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys 
 	uu.done = done
 	ch := make(chan *protonmail.Event)
 	go uu.receiveEvents(be.updates, ch)
-	be.eventsManager.Register(c, u.Name, ch, done)
+	uu.eventsReceiver = be.eventsManager.Register(c, u.Name, ch, done)
 
 	return uu, nil
 }
@@ -125,16 +129,24 @@ func (u *user) getMailboxByLabel(labelID string) *mailbox {
 	return u.mailboxes[labelID]
 }
 
-func (u *user) GetMailbox(name string) (imapbackend.Mailbox, error) {
+func (u *user) getMailbox(name string) *mailbox {
 	u.locker.Lock()
 	defer u.locker.Unlock()
 
 	for _, mbox := range u.mailboxes {
 		if mbox.name == name {
-			return mbox, nil
+			return mbox
 		}
 	}
-	return nil, imapbackend.ErrNoSuchMailbox
+	return nil
+}
+
+func (u *user) GetMailbox(name string) (imapbackend.Mailbox, error) {
+	mbox := u.getMailbox(name)
+	if mbox == nil {
+		return nil, imapbackend.ErrNoSuchMailbox
+	}
+	return mbox, nil
 }
 
 func (u *user) CreateMailbox(name string) error {
@@ -162,8 +174,15 @@ func (u *user) Logout() error {
 	return nil
 }
 
+func (u *user) poll() {
+	go u.eventsReceiver.Poll()
+	<-u.eventSent
+}
+
 func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonmail.Event) {
 	for event := range events {
+		var eventUpdates []interface{}
+
 		if event.Refresh&protonmail.EventRefreshMail != 0 {
 			log.Println("Reinitializing the whole IMAP database")
 
@@ -201,7 +220,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 							update.Mailbox = mbox.name
 							update.MailboxStatus = imap.NewMailboxStatus(mbox.name, []imap.StatusItem{imap.StatusMessages})
 							update.MailboxStatus.Messages = seqNum
-							updates <- update
+							eventUpdates = append(eventUpdates, update)
 						}
 					}
 				case protonmail.EventUpdate, protonmail.EventUpdateFlags:
@@ -219,7 +238,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 							update.Mailbox = mbox.name
 							update.MailboxStatus = imap.NewMailboxStatus(mbox.name, []imap.StatusItem{imap.StatusMessages})
 							update.MailboxStatus.Messages = seqNum
-							updates <- update
+							eventUpdates = append(eventUpdates, update)
 						}
 					}
 					for labelID, seqNum := range deletedSeqNums {
@@ -228,7 +247,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 							update.Username = u.u.Name
 							update.Mailbox = mbox.name
 							update.SeqNum = seqNum
-							updates <- update
+							eventUpdates = append(eventUpdates, update)
 						}
 					}
 
@@ -257,7 +276,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 							update.Mailbox = mbox.name
 							update.Message = imap.NewMessage(seqNum, []imap.FetchItem{imap.FetchFlags})
 							update.Message.Flags = fetchFlags(msg)
-							updates <- update
+							eventUpdates = append(eventUpdates, update)
 						}
 					}
 				case protonmail.EventDelete:
@@ -274,7 +293,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 							update.Username = u.u.Name
 							update.Mailbox = mbox.name
 							update.SeqNum = seqNum
-							updates <- update
+							eventUpdates = append(eventUpdates, update)
 						}
 					}
 				}
@@ -289,5 +308,17 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 			}
 			u.locker.Unlock()
 		}
+
+		done := imapbackend.WaitUpdates(eventUpdates...)
+		for _, update := range eventUpdates {
+			updates <- update
+		}
+		go func() {
+			<-done
+			select {
+			case u.eventSent <- struct{}{}:
+			default:
+			}
+		}()
 	}
 }

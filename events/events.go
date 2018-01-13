@@ -10,23 +10,24 @@ import (
 
 const pollInterval = 30 * time.Second
 
-type receiver struct {
-	channels []chan<- *protonmail.Event
+type Receiver struct {
+	c *protonmail.Client
+
 	locker sync.Mutex
+	channels []chan<- *protonmail.Event
+
+	poll chan struct{}
 }
 
-func (r *receiver) receiveEvents(c *protonmail.Client, last string) {
+func (r *Receiver) receiveEvents() {
 	t := time.NewTicker(pollInterval)
 	defer t.Stop()
 
-	for range t.C {
-		event, err := c.GetEvent(last)
+	var last string
+	for {
+		event, err := r.c.GetEvent(last)
 		if err != nil {
 			log.Println("cannot receive event:", err)
-			continue
-		}
-
-		if event.ID == last {
 			continue
 		}
 		last = event.ID
@@ -41,21 +42,30 @@ func (r *receiver) receiveEvents(c *protonmail.Client, last string) {
 		if n == 0 {
 			break
 		}
+
+		select {
+		case <-t.C:
+		case <-r.poll:
+		}
 	}
 }
 
+func (r *Receiver) Poll() {
+	r.poll <- struct{}{}
+}
+
 type Manager struct {
-	receivers map[string]*receiver
+	receivers map[string]*Receiver
 	locker sync.Mutex
 }
 
 func NewManager() *Manager {
 	return &Manager{
-		receivers: make(map[string]*receiver),
+		receivers: make(map[string]*Receiver),
 	}
 }
 
-func (m *Manager) Register(c *protonmail.Client, username string, ch chan<- *protonmail.Event, done <-chan struct{}) {
+func (m *Manager) Register(c *protonmail.Client, username string, ch chan<- *protonmail.Event, done <-chan struct{}) *Receiver {
 	m.locker.Lock()
 	defer m.locker.Unlock()
 
@@ -65,12 +75,14 @@ func (m *Manager) Register(c *protonmail.Client, username string, ch chan<- *pro
 		r.channels = append(r.channels, ch)
 		r.locker.Unlock()
 	} else {
-		r = &receiver{
+		r = &Receiver{
+			c: c,
 			channels: []chan<- *protonmail.Event{ch},
+			poll: make(chan struct{}),
 		}
 
 		go func() {
-			r.receiveEvents(c, "")
+			r.receiveEvents()
 
 			m.locker.Lock()
 			delete(m.receivers, username)
@@ -95,4 +107,6 @@ func (m *Manager) Register(c *protonmail.Client, username string, ch chan<- *pro
 			close(ch)
 		}()
 	}
+
+	return r
 }
