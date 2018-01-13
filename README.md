@@ -3,7 +3,7 @@
 A third-party, open-source ProtonMail bridge. For power users only, designed to
 run on a server.
 
-hydroxide supports CardDAV and SMTP.
+hydroxide supports CardDAV, IMAP and SMTP.
 
 Rationale:
 
@@ -13,9 +13,9 @@ Rationale:
 
 ## Setup
 
-### Golang
+### Go
 
-hydroxide is implemented with Go. Head to [Golang website](https://golang.org) 
+hydroxide is implemented with Go. Head to [Go website](https://golang.org)
 for setup information.
 
 ### Install and Setup
@@ -46,6 +46,14 @@ hydroxide carddav
 ```
 
 Tested on GNOME (Evolution) and Android (DAVDroid).
+
+### IMAP
+
+For now, it only supports unencrypted local connections.
+
+```shell
+hydroxide imap
+```
 
 ### SMTP
 
