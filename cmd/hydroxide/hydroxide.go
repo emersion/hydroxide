@@ -10,12 +10,17 @@ import (
 	"os"
 	"time"
 
+	imapmove "github.com/emersion/go-imap-move"
+	imapserver "github.com/emersion/go-imap/server"
+	imapspacialuse "github.com/emersion/go-imap-specialuse"
 	"github.com/emersion/go-smtp"
 	"github.com/howeyc/gopass"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
+	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/protonmail"
+	imapbackend "github.com/emersion/hydroxide/imap"
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
 
@@ -28,10 +33,11 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func receiveEvents(c *protonmail.Client, last string, ch chan<- *protonmail.Event) {
+func receiveEvents(c *protonmail.Client, ch chan<- *protonmail.Event) {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 
+	var last string
 	for range t.C {
 		event, err := c.GetEvent(last)
 		if err != nil {
@@ -135,7 +141,7 @@ func main() {
 	case "smtp":
 		port := os.Getenv("PORT")
 		if port == "" {
-			port = "1465"
+			port = "1025"
 		}
 
 		sessions := auth.NewManager(newClient)
@@ -149,6 +155,25 @@ func main() {
 
 		log.Println("Starting SMTP server at", s.Addr)
 		log.Fatal(s.ListenAndServe())
+	case "imap":
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "1143"
+		}
+
+		sessions := auth.NewManager(newClient)
+		eventsManager := events.NewManager()
+
+		be := imapbackend.New(sessions, eventsManager)
+		s := imapserver.New(be)
+		s.Addr = "127.0.0.1:" + port
+		s.AllowInsecureAuth = true // TODO: remove this
+		//s.Debug = os.Stdout
+		s.Enable(imapspacialuse.NewExtension())
+		s.Enable(imapmove.NewExtension())
+
+		log.Println("Starting IMAP server at", s.Addr)
+		log.Fatal(s.ListenAndServe())
 	case "carddav":
 		port := os.Getenv("PORT")
 		if port == "" {
@@ -156,6 +181,7 @@ func main() {
 		}
 
 		sessions := auth.NewManager(newClient)
+		eventsManager := events.NewManager()
 		handlers := make(map[string]http.Handler)
 
 		s := &http.Server{
@@ -183,9 +209,9 @@ func main() {
 
 				h, ok := handlers[username]
 				if !ok {
-					events := make(chan *protonmail.Event)
-					go receiveEvents(c, "", events)
-					h = carddav.NewHandler(c, privateKeys, events)
+					ch := make(chan *protonmail.Event)
+					eventsManager.Register(c, username, ch, nil)
+					h = carddav.NewHandler(c, privateKeys, ch)
 
 					handlers[username] = h
 				}
