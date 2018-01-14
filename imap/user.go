@@ -179,9 +179,9 @@ func (u *user) poll() {
 	<-u.eventSent
 }
 
-func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonmail.Event) {
+func (u *user) receiveEvents(updates chan<- imapbackend.Update, events <-chan *protonmail.Event) {
 	for event := range events {
-		var eventUpdates []interface{}
+		var eventUpdates []imapbackend.Update
 
 		if event.Refresh&protonmail.EventRefreshMail != 0 {
 			log.Println("Reinitializing the whole IMAP database")
@@ -216,8 +216,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 					for labelID, seqNum := range seqNums {
 						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
 							update := new(imapbackend.MailboxUpdate)
-							update.Username = u.u.Name
-							update.Mailbox = mbox.name
+							update.Update = imapbackend.NewUpdate(u.u.Name, mbox.name)
 							update.MailboxStatus = imap.NewMailboxStatus(mbox.name, []imap.StatusItem{imap.StatusMessages})
 							update.MailboxStatus.Messages = seqNum
 							eventUpdates = append(eventUpdates, update)
@@ -234,8 +233,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 					for labelID, seqNum := range createdSeqNums {
 						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
 							update := new(imapbackend.MailboxUpdate)
-							update.Username = u.u.Name
-							update.Mailbox = mbox.name
+							update.Update = imapbackend.NewUpdate(u.u.Name, mbox.name)
 							update.MailboxStatus = imap.NewMailboxStatus(mbox.name, []imap.StatusItem{imap.StatusMessages})
 							update.MailboxStatus.Messages = seqNum
 							eventUpdates = append(eventUpdates, update)
@@ -244,8 +242,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 					for labelID, seqNum := range deletedSeqNums {
 						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
 							update := new(imapbackend.ExpungeUpdate)
-							update.Username = u.u.Name
-							update.Mailbox = mbox.name
+							update.Update = imapbackend.NewUpdate(u.u.Name, mbox.name)
 							update.SeqNum = seqNum
 							eventUpdates = append(eventUpdates, update)
 						}
@@ -272,8 +269,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 							}
 
 							update := new(imapbackend.MessageUpdate)
-							update.Username = u.u.Name
-							update.Mailbox = mbox.name
+							update.Update = imapbackend.NewUpdate(u.u.Name, mbox.name)
 							update.Message = imap.NewMessage(seqNum, []imap.FetchItem{imap.FetchFlags})
 							update.Message.Flags = fetchFlags(msg)
 							eventUpdates = append(eventUpdates, update)
@@ -290,8 +286,7 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 					for labelID, seqNum := range seqNums {
 						if mbox := u.getMailboxByLabel(labelID); mbox != nil {
 							update := new(imapbackend.ExpungeUpdate)
-							update.Username = u.u.Name
-							update.Mailbox = mbox.name
+							update.Update = imapbackend.NewUpdate(u.u.Name, mbox.name)
 							update.SeqNum = seqNum
 							eventUpdates = append(eventUpdates, update)
 						}
@@ -309,12 +304,14 @@ func (u *user) receiveEvents(updates chan<- interface{}, events <-chan *protonma
 			u.locker.Unlock()
 		}
 
-		done := imapbackend.WaitUpdates(eventUpdates...)
 		for _, update := range eventUpdates {
 			updates <- update
 		}
 		go func() {
-			<-done
+			for _, update := range eventUpdates {
+				<-update.Done()
+			}
+
 			select {
 			case u.eventSent <- struct{}{}:
 			default:
