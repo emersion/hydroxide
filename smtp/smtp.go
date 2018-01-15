@@ -269,9 +269,14 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		}
 
 		for _, rcpt := range plaintextRecipients {
-			if err := plaintextSet.AddCleartext(rcpt); err != nil {
+			pkg, err := plaintextSet.AddCleartext(rcpt)
+			if err != nil {
 				return err
 			}
+
+			// Don't sign plaintext messages by default
+			// TODO: send inline singnature to opt-in contacts
+			pkg.Signature = 0
 		}
 
 		outgoing.Packages = append(outgoing.Packages, plaintextSet)
@@ -293,7 +298,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		}
 
 		for rcpt, pub := range encryptedRecipients {
-			if err := encryptedSet.AddInternal(rcpt, pub); err != nil {
+			if _, err := encryptedSet.AddInternal(rcpt, pub); err != nil {
 				return err
 			}
 		}

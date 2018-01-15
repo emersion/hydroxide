@@ -471,11 +471,12 @@ func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (
 	}, nil
 }
 
-func (set *MessagePackageSet) AddCleartext(addr string) error {
-	set.Addresses[addr] = &MessagePackage{
+func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error) {
+	pkg := &MessagePackage{
 		Type: MessagePackageCleartext,
 		Signature: set.signature,
 	}
+	set.Addresses[addr] = pkg
 	set.Type |= MessagePackageCleartext
 
 	if set.BodyKey == "" || set.AttachmentKeys == nil {
@@ -487,7 +488,7 @@ func (set *MessagePackageSet) AddCleartext(addr string) error {
 		}
 	}
 
-	return nil
+	return pkg, nil
 }
 
 func serializeEncryptedKey(symKey *packet.EncryptedKey, pub *packet.PublicKey, config *packet.Config) (string, error) {
@@ -504,36 +505,37 @@ func serializeEncryptedKey(symKey *packet.EncryptedKey, pub *packet.PublicKey, c
 	return encoded.String(), nil
 }
 
-func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) error {
+func (set *MessagePackageSet) AddInternal(addr string, pub *openpgp.Entity) (*MessagePackage, error) {
 	config := &packet.Config{}
 
 	encKey, ok := encryptionKey(pub, config.Now())
 	if !ok {
-		return errors.New("cannot encrypt a message to key id " + strconv.FormatUint(pub.PrimaryKey.KeyId, 16) + " because it has no encryption keys")
+		return nil, errors.New("cannot encrypt a message to key id " + strconv.FormatUint(pub.PrimaryKey.KeyId, 16) + " because it has no encryption keys")
 	}
 
 	bodyKey, err := serializeEncryptedKey(set.bodyKey, encKey.PublicKey, config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	attachmentKeys := make(map[string]string, len(set.attachmentKeys))
 	for att, key := range set.attachmentKeys {
 		attKey, err := serializeEncryptedKey(key, encKey.PublicKey, config)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		attachmentKeys[att] = attKey
 	}
 
 	set.Type |= MessagePackageInternal
-	set.Addresses[addr] = &MessagePackage{
+	pkg := &MessagePackage{
 		Type:                 MessagePackageInternal,
 		BodyKeyPacket:        bodyKey,
 		AttachmentKeyPackets: attachmentKeys,
 		Signature:            set.signature,
 	}
-	return nil
+	set.Addresses[addr] = pkg
+	return pkg, nil
 }
 
 type OutgoingMessage struct {
