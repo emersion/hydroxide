@@ -195,7 +195,7 @@ func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 
 func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, error) {
 	passphraseBytes := []byte(passphrase)
-	if auth.PasswordMode == PasswordSingle {
+	if auth.keySalt != "" {
 		keySalt, err := base64.StdEncoding.DecodeString(auth.keySalt)
 		if err != nil {
 			return nil, err
