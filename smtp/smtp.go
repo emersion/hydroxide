@@ -341,6 +341,10 @@ func (be *backend) Login(username, password string) (smtp.User, error) {
 	return &user{c, u, privateKeys}, nil
 }
 
+func (be *backend) AnonymousLogin() (smtp.User, error) {
+	return nil, smtp.ErrAuthRequired
+}
+
 func New(sessions *auth.Manager) smtp.Backend {
 	return &backend{sessions}
 }
