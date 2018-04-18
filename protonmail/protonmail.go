@@ -19,12 +19,12 @@ const headerAPIVersion = "X-Pm-Apiversion"
 
 type resp struct {
 	Code int
-	*apiError
+	*RawAPIError
 }
 
 func (r *resp) Err() error {
-	if err := r.apiError; err != nil {
-		return &ApiError{
+	if err := r.RawAPIError; err != nil {
+		return &APIError{
 			Code: r.Code,
 			Message: err.Message,
 		}
@@ -36,16 +36,16 @@ type maybeError interface {
 	Err() error
 }
 
-type apiError struct {
+type RawAPIError struct {
 	Message string `json:"Error"`
 }
 
-type ApiError struct {
+type APIError struct {
 	Code int
 	Message string
 }
 
-func (err *ApiError) Error() string {
+func (err *APIError) Error() string {
 	return fmt.Sprintf("[%v] %v", err.Code, err.Message)
 }
 
