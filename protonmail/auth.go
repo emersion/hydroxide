@@ -260,6 +260,51 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 	c.uid = auth.UID
 	c.accessToken = string(accessTokenBytes)
 	c.keyRing = keyRing
+
+	// Get additional private keys
+	u, err := c.GetCurrentUser()
+	if err != nil {
+		return nil, err
+	}
+	var keyRing2 openpgp.EntityList
+	for _, e := range u.Addresses {
+		for _, f := range e.Keys {
+			prKey, err := openpgp.ReadArmoredKeyRing(strings.NewReader(f.PrivateKey))
+			//pkey, err := f.Entity()
+			if err != nil {
+				return nil, err
+			}
+			if len(prKey) == 0 {
+				return nil, errors.New("auth key ring is empty")
+			}
+			keyRing2 = append(keyRing2, prKey[0])
+
+			//fmt.Println(e.Email, " key ", pkey.PrimaryKey.KeyId)
+			//if pkey.PrimaryKey.KeyId != keyRing[0].PrimaryKey.KeyId {
+			//	keyRing = append(keyRing, pkey)
+			//}
+		}
+	}
+	for _, e := range keyRing2 {
+		var privateKeys []*packet.PrivateKey
+		if e.PrivateKey != nil {
+			privateKeys = append(privateKeys, e.PrivateKey)
+		}
+
+		for _, subkey := range e.Subkeys {
+			if subkey.PrivateKey != nil {
+				privateKeys = append(privateKeys, subkey.PrivateKey)
+			}
+		}
+
+		for _, priv := range privateKeys {
+			if err := priv.Decrypt(passphraseBytes); err != nil {
+				return nil, err
+			}
+		}
+		keyRing = append(keyRing, e)
+	}
+
 	return keyRing, nil
 }
 
