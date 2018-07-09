@@ -269,20 +269,22 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 	var keyRing2 openpgp.EntityList
 	for _, e := range u.Addresses {
 		for _, f := range e.Keys {
-			prKey, err := openpgp.ReadArmoredKeyRing(strings.NewReader(f.PrivateKey))
-			//pkey, err := f.Entity()
+			pkey, err := f.Entity()
 			if err != nil {
 				return nil, err
 			}
+			if pkey.PrimaryKey.KeyId == keyRing[0].PrimaryKey.KeyId {
+				continue
+			}
+			prKey, err := openpgp.ReadArmoredKeyRing(strings.NewReader(f.PrivateKey))
+			// TODO Are these errors fatal?
+			if err != nil {
+				continue
+			}
 			if len(prKey) == 0 {
-				return nil, errors.New("auth key ring is empty")
+				continue
 			}
 			keyRing2 = append(keyRing2, prKey[0])
-
-			//fmt.Println(e.Email, " key ", pkey.PrimaryKey.KeyId)
-			//if pkey.PrimaryKey.KeyId != keyRing[0].PrimaryKey.KeyId {
-			//	keyRing = append(keyRing, pkey)
-			//}
 		}
 	}
 	for _, e := range keyRing2 {
