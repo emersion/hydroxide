@@ -113,8 +113,26 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return err
 	}
 
-	// TODO: parentID from In-Reply-To
-	msg, err = u.c.CreateDraftMessage(msg, "")
+	parentID := ""
+	inReplyToList, _ := mr.Header.AddressList("In-Reply-To")
+	if len(inReplyToList) == 1 {
+		inReplyTo := inReplyToList[0].Address
+
+		filter := protonmail.MessageFilter{
+			Limit: 1,
+			ExternalID: inReplyTo,
+			AddressID: fromAddr.ID,
+		}
+		total, msgs, err := u.c.ListMessages(&filter)
+		if err != nil {
+			return err
+		}
+		if total == 1 {
+			parentID = msgs[0].ID
+		}
+	}
+
+	msg, err = u.c.CreateDraftMessage(msg, parentID)
 	if err != nil {
 		return fmt.Errorf("cannot create draft message: %v", err)
 	}

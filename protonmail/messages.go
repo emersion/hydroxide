@@ -152,7 +152,7 @@ type MessageFilter struct {
 	Starred *bool
 	Unread *bool
 	Conversation string
-	Address string
+	AddressID string
 	ID []string
 	ExternalID string
 }
@@ -180,8 +180,8 @@ func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Mes
 	if filter.Conversation != "" {
 		v.Set("Conversation", filter.Conversation)
 	}
-	if filter.Address != "" {
-		v.Set("Address", filter.Address)
+	if filter.AddressID != "" {
+		v.Set("AddressID", filter.AddressID)
 	}
 	if filter.ExternalID != "" {
 		v.Set("ExternalID", filter.ExternalID)
