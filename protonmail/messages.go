@@ -40,6 +40,14 @@ const (
 	_
 )
 
+type MessageAction int
+
+const (
+	MessageReply MessageAction = iota
+	MessageReplyAll
+	MessageForward
+)
+
 type MessageAddress struct {
 	Address string
 	Name    string
@@ -251,11 +259,18 @@ func (c *Client) GetMessage(id string) (*Message, error) {
 // CreateDraftMessage creates a new draft message. ToList, CCList, BCCList,
 // Subject, Body and AddressID are required in msg.
 func (c *Client) CreateDraftMessage(msg *Message, parentID string) (*Message, error) {
+	var actionPtr *MessageAction
+	if parentID != "" {
+		// TODO: support other actions
+		action := MessageReply
+		actionPtr = &action
+	}
+
 	reqData := struct {
 		Message  *Message
-		ParentID string `json:",omitempty"`
-		Action   *int   `json:",omitempty"`
-	}{msg, parentID, nil}
+		ParentID string         `json:",omitempty"`
+		Action   *MessageAction `json:",omitempty"`
+	}{msg, parentID, actionPtr}
 	req, err := c.newJSONRequest(http.MethodPost, "/messages", &reqData)
 	if err != nil {
 		return nil, err
