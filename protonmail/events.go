@@ -51,7 +51,7 @@ type EventMessage struct {
 }
 
 type EventMessageUpdate struct {
-	IsRead       *int
+	Unread       *int
 	Type         *MessageType
 	Time         int64
 	IsReplied    *int
@@ -97,8 +97,8 @@ func (update *EventMessageUpdate) DiffLabelIDs(current []string) (added, removed
 
 func (update *EventMessageUpdate) Patch(msg *Message) {
 	msg.Time = update.Time
-	if update.IsRead != nil {
-		msg.IsRead = *update.IsRead
+	if update.Unread != nil {
+		msg.Unread = *update.Unread
 	}
 	if update.Type != nil {
 		msg.Type = *update.Type
