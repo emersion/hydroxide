@@ -57,7 +57,7 @@ type Message struct {
 	ID             string
 	Order          int64
 	Subject        string
-	IsRead         int
+	Unread         int
 	Type           MessageType
 	Sender         *MessageAddress
 	ReplyTo        *MessageAddress

@@ -99,7 +99,7 @@ func hasLabel(msg *protonmail.Message, labelID string) bool {
 // Doesn't support imap.DeletedFlag.
 func fetchFlags(msg *protonmail.Message) []string {
 	var flags []string
-	if msg.IsRead != 0 {
+	if msg.Unread != 1 {
 		flags = append(flags, imap.SeenFlag)
 	}
 	if msg.IsReplied != 0 || msg.IsRepliedAll != 0 {
