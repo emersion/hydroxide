@@ -403,12 +403,17 @@ type MessagePackageSet struct {
 	Body      string // Encrypted body data packet
 
 	// Only if cleartext is sent
-	BodyKey        map[string]string
+	BodyKey        *MessageBodyKey `json:omitempty`
 	AttachmentKeys map[string]string
 
 	bodyKey        *packet.EncryptedKey
 	attachmentKeys map[string]*packet.EncryptedKey
 	signature      int
+}
+
+type MessageBodyKey struct {
+	Algorithm   string
+	Key         string
 }
 
 func NewMessagePackageSet(attachmentKeys map[string]*packet.EncryptedKey) *MessagePackageSet {
@@ -495,9 +500,10 @@ func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error)
 	set.Type |= MessagePackageCleartext
 
 	if set.BodyKey == nil || set.AttachmentKeys == nil {
-		set.BodyKey = make(map[string]string, 2)
-		set.BodyKey["Algorithm"] = "aes256"
-		set.BodyKey["Key"] = base64.StdEncoding.EncodeToString(set.bodyKey.Key)
+		set.BodyKey = &MessageBodyKey{
+			Algorithm: "aes256",
+			Key: base64.StdEncoding.EncodeToString(set.bodyKey.Key),
+		}
 
 		set.AttachmentKeys = make(map[string]string, len(set.attachmentKeys))
 		for att, key := range set.attachmentKeys {
