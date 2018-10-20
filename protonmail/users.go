@@ -78,7 +78,7 @@ func (c *Client) GetCurrentUser() (*User, error) {
 		return nil, err
 	}
 
-	req2, err := c.newRequest(http.MethodGet, "/addresses", nil)
+	req, err = c.newRequest(http.MethodGet, "/addresses", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (c *Client) GetCurrentUser() (*User, error) {
 		resp
 		Addresses []*Address
 	}
-	if err := c.doJSON(req2, &addrData); err != nil {
+	if err := c.doJSON(req, &addrData); err != nil {
 		return nil, err
 	}
 
