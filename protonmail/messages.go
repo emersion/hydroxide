@@ -565,7 +565,7 @@ type OutgoingMessage struct {
 }
 
 func (c *Client) SendMessage(msg *OutgoingMessage) (sent, parent *Message, err error) {
-	req, err := c.newJSONRequest(http.MethodPost, "/messages/send/"+msg.ID, msg)
+	req, err := c.newJSONRequest(http.MethodPost, "/messages/"+msg.ID, msg)
 	if err != nil {
 		return nil, nil, err
 	}
