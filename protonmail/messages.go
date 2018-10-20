@@ -403,12 +403,17 @@ type MessagePackageSet struct {
 	Body      string // Encrypted body data packet
 
 	// Only if cleartext is sent
-	BodyKey        string
+	BodyKey        *MessageBodyKey `json:",omitempty"`
 	AttachmentKeys map[string]string
 
 	bodyKey        *packet.EncryptedKey
 	attachmentKeys map[string]*packet.EncryptedKey
 	signature      int
+}
+
+type MessageBodyKey struct {
+	Algorithm   string
+	Key         string
 }
 
 func NewMessagePackageSet(attachmentKeys map[string]*packet.EncryptedKey) *MessagePackageSet {
@@ -494,8 +499,11 @@ func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error)
 	set.Addresses[addr] = pkg
 	set.Type |= MessagePackageCleartext
 
-	if set.BodyKey == "" || set.AttachmentKeys == nil {
-		set.BodyKey = base64.StdEncoding.EncodeToString(set.bodyKey.Key)
+	if set.BodyKey == nil || set.AttachmentKeys == nil {
+		set.BodyKey = &MessageBodyKey{
+			Algorithm: "aes256",
+			Key: base64.StdEncoding.EncodeToString(set.bodyKey.Key),
+		}
 
 		set.AttachmentKeys = make(map[string]string, len(set.attachmentKeys))
 		for att, key := range set.attachmentKeys {
@@ -563,7 +571,7 @@ type OutgoingMessage struct {
 }
 
 func (c *Client) SendMessage(msg *OutgoingMessage) (sent, parent *Message, err error) {
-	req, err := c.newJSONRequest(http.MethodPost, "/messages/send/"+msg.ID, msg)
+	req, err := c.newJSONRequest(http.MethodPost, "/messages/"+msg.ID, msg)
 	if err != nil {
 		return nil, nil, err
 	}

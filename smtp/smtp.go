@@ -95,6 +95,11 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return errors.New("sender address key hasn't been decrypted")
 	}
 
+	senderAddress := &protonmail.MessageAddress{
+		Address:  fromAddr.Email,
+		Name:     fromAddr.DisplayName,
+	}
+
 	msg := &protonmail.Message{
 		ToList:    toPMAddressList(toList),
 		CCList:    toPMAddressList(ccList),
@@ -102,6 +107,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		Subject:   subject,
 		Header:    formatHeader(mr.Header),
 		AddressID: fromAddr.ID,
+		Sender:    senderAddress,
 	}
 
 	// Create an empty draft

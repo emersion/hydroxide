@@ -70,13 +70,28 @@ func (c *Client) GetCurrentUser() (*User, error) {
 		return nil, err
 	}
 
-	var respData struct {
+	var userData struct {
 		resp
 		User *User
 	}
-	if err := c.doJSON(req, &respData); err != nil {
+	if err := c.doJSON(req, &userData); err != nil {
 		return nil, err
 	}
 
-	return respData.User, nil
+	req, err = c.newRequest(http.MethodGet, "/addresses", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var addrData struct {
+		resp
+		Addresses []*Address
+	}
+	if err := c.doJSON(req, &addrData); err != nil {
+		return nil, err
+	}
+
+	userData.User.Addresses = addrData.Addresses
+
+	return userData.User, nil
 }
