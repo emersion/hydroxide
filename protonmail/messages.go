@@ -403,7 +403,7 @@ type MessagePackageSet struct {
 	Body      string // Encrypted body data packet
 
 	// Only if cleartext is sent
-	BodyKey        string
+	BodyKey        map[string]string
 	AttachmentKeys map[string]string
 
 	bodyKey        *packet.EncryptedKey
@@ -494,8 +494,10 @@ func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error)
 	set.Addresses[addr] = pkg
 	set.Type |= MessagePackageCleartext
 
-	if set.BodyKey == "" || set.AttachmentKeys == nil {
-		set.BodyKey = base64.StdEncoding.EncodeToString(set.bodyKey.Key)
+	if set.BodyKey == nil || set.AttachmentKeys == nil {
+		set.BodyKey = make(map[string]string, 2)
+		set.BodyKey["Algorithm"] = "aes256"
+		set.BodyKey["Key"] = base64.StdEncoding.EncodeToString(set.bodyKey.Key)
 
 		set.AttachmentKeys = make(map[string]string, len(set.attachmentKeys))
 		for att, key := range set.attachmentKeys {
