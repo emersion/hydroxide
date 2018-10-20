@@ -403,7 +403,7 @@ type MessagePackageSet struct {
 	Body      string // Encrypted body data packet
 
 	// Only if cleartext is sent
-	BodyKey        *MessageBodyKey `json:omitempty`
+	BodyKey        *MessageBodyKey `json:",omitempty"`
 	AttachmentKeys map[string]string
 
 	bodyKey        *packet.EncryptedKey
