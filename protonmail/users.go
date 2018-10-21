@@ -4,16 +4,6 @@ import (
 	"net/http"
 )
 
-type (
-	LogAuth        int
-	ComposerMode   int
-	MessageButtons int
-	ImagesMode     int
-	ViewMode       int
-	ViewLayout     int
-	SwipeAction    int
-)
-
 type User struct {
 	ID         string
 	Name       string
