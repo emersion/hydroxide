@@ -53,9 +53,7 @@ func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 	// assume that the primary key is ok. Or, if the primary key is
 	// marked as ok to encrypt to, then we can obviously use it.
 	i := primaryIdentity(e)
-	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications &&
-		e.PrimaryKey.PubKeyAlgo.CanEncrypt() &&
-		!i.SelfSignature.KeyExpired(now) {
+	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications && e.PrimaryKey.PubKeyAlgo.CanEncrypt() && !i.SelfSignature.KeyExpired(now) {
 		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
 	}
 
@@ -86,8 +84,7 @@ func signingKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 	// If we have no candidate subkey then we assume that it's ok to sign
 	// with the primary key.
 	i := primaryIdentity(e)
-	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign &&
-		!i.SelfSignature.KeyExpired(now) {
+	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign && !i.SelfSignature.KeyExpired(now) {
 		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
 	}
 

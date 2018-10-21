@@ -104,7 +104,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		Subject:   subject,
 		Header:    formatHeader(mr.Header),
 		AddressID: fromAddr.ID,
-		Sender:    &protonmail.MessageAddress{
+		Sender: &protonmail.MessageAddress{
 			Address: rawFrom.Address,
 			Name:    rawFrom.Name,
 		},
