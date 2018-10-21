@@ -64,7 +64,8 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return errors.New("no recipient specified")
 	}
 
-	fromAddrStr := fromList[0].Address
+	rawFrom := fromList[0]
+	fromAddrStr := rawFrom.Address
 	var fromAddr *protonmail.Address
 	for _, addr := range u.addrs {
 		if strings.EqualFold(addr.Email, fromAddrStr) {
@@ -96,11 +97,6 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return errors.New("sender address key hasn't been decrypted")
 	}
 
-	senderAddress := &protonmail.MessageAddress{
-		Address: fromAddr.Email,
-		Name:    fromAddr.DisplayName,
-	}
-
 	msg := &protonmail.Message{
 		ToList:    toPMAddressList(toList),
 		CCList:    toPMAddressList(ccList),
@@ -108,7 +104,10 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		Subject:   subject,
 		Header:    formatHeader(mr.Header),
 		AddressID: fromAddr.ID,
-		Sender:    senderAddress,
+		Sender:    &protonmail.MessageAddress{
+			Address: rawFrom.Address,
+			Name:    rawFrom.Name,
+		},
 	}
 
 	// Create an empty draft
