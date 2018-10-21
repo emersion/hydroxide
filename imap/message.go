@@ -376,7 +376,7 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 	return l, nil
 }
 
-func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList, r io.Reader) (*protonmail.Message, error) {
+func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList, addrs []*protonmail.Address, r io.Reader) (*protonmail.Message, error) {
 	// Parse the incoming MIME message header
 	mr, err := mail.CreateReader(r)
 	if err != nil {
@@ -398,7 +398,7 @@ func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp
 
 	fromAddrStr := fromList[0].Address
 	var fromAddr *protonmail.Address
-	for _, addr := range u.Addresses {
+	for _, addr := range addrs {
 		if strings.EqualFold(addr.Email, fromAddrStr) {
 			fromAddr = addr
 			break

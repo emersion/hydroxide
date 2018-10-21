@@ -15,53 +15,19 @@ type (
 )
 
 type User struct {
-	ID                 string
-	Name               string
-	NotificationEmail  string
-	Signature          string // HTML
-	NumMessagePerPage  int
-	UsedSpace          int
-	Notify             int
-	AutoSaveContacts   int
-	Language           string // e.g. en_US
-	LogAuth            LogAuth
-	ComposerMode       ComposerMode
-	MessageButtons     MessageButtons
-	Images             ImagesMode
-	Moved              int
-	ShowImages         int
-	ShowEmbedded       int
-	ViewMode           ViewMode
-	ViewLayout         ViewLayout
-	SwipeLeft          SwipeAction
-	SwipeRight         SwipeAction
-	Theme              string
-	Currency           string // e.g. EUR
-	Credit             int
-	InvoiceText        string
-	AlsoArchive        int
-	Hotkeys            int
-	PMSignature        int
-	TwoFactor          int
-	PasswordReset      int
-	PasswordMode       PasswordMode
-	News               int
-	AutoResponder      interface{} // TODO
-	AutoWildcardSearch int
-	DraftMIMEType      string
-	ReceiveMIMEType    string
-	ImageProxy         int
-	DisplayName        string
-	MaxSpace           int
-	MaxUpload          int
-	Subscribed         int // TODO
-	Services           int // TODO
-	Role               int // TODO
-	Private            int
-	VPN                interface{} // TODO
-	Delinquent         int
-	Addresses          []*Address
-	Keys               []*PrivateKey
+	ID         string
+	Name       string
+	UsedSpace  int
+	Currency   string // e.g. EUR
+	Credit     int
+	MaxSpace   int
+	MaxUpload  int
+	Role       int // TODO
+	Private    int
+	Subscribed int // TODO
+	Services   int // TODO
+	Delinquent int
+	Keys       []*PrivateKey
 }
 
 func (c *Client) GetCurrentUser() (*User, error) {
@@ -70,28 +36,13 @@ func (c *Client) GetCurrentUser() (*User, error) {
 		return nil, err
 	}
 
-	var userData struct {
+	var respData struct {
 		resp
 		User *User
 	}
-	if err := c.doJSON(req, &userData); err != nil {
+	if err := c.doJSON(req, &respData); err != nil {
 		return nil, err
 	}
 
-	req, err = c.newRequest(http.MethodGet, "/addresses", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var addrData struct {
-		resp
-		Addresses []*Address
-	}
-	if err := c.doJSON(req, &addrData); err != nil {
-		return nil, err
-	}
-
-	userData.User.Addresses = addrData.Addresses
-
-	return userData.User, nil
+	return respData.User, nil
 }

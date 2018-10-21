@@ -28,9 +28,12 @@ func (be *backend) Login(username, password string) (imapbackend.User, error) {
 		return nil, err
 	}
 
-	// TODO: decrypt private keys in u.Addresses
+	addrs, err := c.ListAddresses()
+	if err != nil {
+		return nil, err
+	}
 
-	return newUser(be, c, u, privateKeys)
+	return newUser(be, c, u, privateKeys, addrs)
 }
 
 func (be *backend) Updates() <-chan imapbackend.Update {

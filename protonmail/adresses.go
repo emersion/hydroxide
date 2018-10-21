@@ -1,5 +1,9 @@
 package protonmail
 
+import (
+	"net/http"
+)
+
 type (
 	AddressSend   int
 	AddressStatus int
@@ -36,4 +40,22 @@ type Address struct {
 	Signature   string // HTML
 	HasKeys     int
 	Keys        []*PrivateKey
+}
+
+func (c *Client) ListAddresses() ([]*Address, error) {
+	// TODO: Page, PageSize
+	req, err := c.newRequest(http.MethodGet, "/addresses", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Addresses []*Address
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Addresses, nil
 }

@@ -41,6 +41,7 @@ type user struct {
 	c           *protonmail.Client
 	u           *protonmail.User
 	privateKeys openpgp.EntityList
+	addrs       []*protonmail.Address
 }
 
 func (u *user) Send(from string, to []string, r io.Reader) error {
@@ -65,7 +66,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 
 	fromAddrStr := fromList[0].Address
 	var fromAddr *protonmail.Address
-	for _, addr := range u.u.Addresses {
+	for _, addr := range u.addrs {
 		if strings.EqualFold(addr.Email, fromAddrStr) {
 			fromAddr = addr
 			break
@@ -360,9 +361,14 @@ func (be *backend) Login(username, password string) (smtp.User, error) {
 		return nil, err
 	}
 
+	addrs, err := c.ListAddresses()
+	if err != nil {
+		return nil, err
+	}
+
 	// TODO: decrypt private keys in u.Addresses
 
-	return &user{c, u, privateKeys}, nil
+	return &user{c, u, privateKeys, addrs}, nil
 }
 
 func (be *backend) AnonymousLogin() (smtp.User, error) {

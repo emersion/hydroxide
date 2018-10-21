@@ -33,6 +33,7 @@ type user struct {
 	c           *protonmail.Client
 	u           *protonmail.User
 	privateKeys openpgp.EntityList
+	addrs       []*protonmail.Address
 
 	db             *database.User
 	eventsReceiver *events.Receiver
@@ -44,11 +45,12 @@ type user struct {
 	eventSent chan struct{}
 }
 
-func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList) (*user, error) {
+func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList, addrs []*protonmail.Address) (*user, error) {
 	uu := &user{
 		c:           c,
 		u:           u,
 		privateKeys: privateKeys,
+		addrs:       addrs,
 		eventSent:   make(chan struct{}),
 	}
 
