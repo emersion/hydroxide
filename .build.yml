@@ -1,0 +1,9 @@
+image: archlinux
+packages:
+  - go
+sources:
+  - https://github.com/emersion/hydroxide.git
+tasks:
+  - build: |
+      cd hydroxide
+      go build ./...
