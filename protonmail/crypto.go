@@ -1,9 +1,9 @@
 package protonmail
 
 import (
-	"io"
 	"crypto"
 	"hash"
+	"io"
 	"time"
 
 	"golang.org/x/crypto/openpgp"

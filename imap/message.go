@@ -54,8 +54,8 @@ func imapAddress(addr *protonmail.MessageAddress) *imap.Address {
 
 	return &imap.Address{
 		PersonalName: addr.Name,
-		MailboxName: parts[0],
-		HostName: parts[1],
+		MailboxName:  parts[0],
+		HostName:     parts[1],
 	}
 }
 
@@ -74,14 +74,14 @@ func fetchEnvelope(msg *protonmail.Message) *imap.Envelope {
 	}
 
 	return &imap.Envelope{
-		Date: time.Unix(msg.Time, 0),
+		Date:    time.Unix(msg.Time, 0),
 		Subject: msg.Subject,
-		From: []*imap.Address{imapAddress(msg.Sender)},
+		From:    []*imap.Address{imapAddress(msg.Sender)},
 		// TODO: Sender
 		ReplyTo: replyTo,
-		To: imapAddressList(msg.ToList),
-		Cc: imapAddressList(msg.CCList),
-		Bcc: imapAddressList(msg.BCCList),
+		To:      imapAddressList(msg.ToList),
+		Cc:      imapAddressList(msg.CCList),
+		Bcc:     imapAddressList(msg.BCCList),
 		// TODO: InReplyTo
 		MessageId: messageID(msg),
 	}
@@ -136,11 +136,11 @@ func (mbox *mailbox) fetchBodyStructure(msg *protonmail.Message, extended bool) 
 	inlineType, inlineSubType := splitMIMEType(msg.MIMEType)
 	parts := []*imap.BodyStructure{
 		&imap.BodyStructure{
-			MIMEType: inlineType,
+			MIMEType:    inlineType,
 			MIMESubType: inlineSubType,
-			Encoding: "quoted-printable",
-			Size: uint32(len(msg.Body)),
-			Extended: extended,
+			Encoding:    "quoted-printable",
+			Size:        uint32(len(msg.Body)),
+			Extended:    extended,
 			Disposition: "inline",
 		},
 	}
@@ -148,23 +148,23 @@ func (mbox *mailbox) fetchBodyStructure(msg *protonmail.Message, extended bool) 
 	for _, att := range msg.Attachments {
 		attType, attSubType := splitMIMEType(att.MIMEType)
 		parts = append(parts, &imap.BodyStructure{
-			MIMEType: attType,
-			MIMESubType: attSubType,
-			Id: att.ContentID,
-			Encoding: "base64",
-			Size: uint32(att.Size),
-			Extended: extended,
-			Disposition: "attachment",
+			MIMEType:          attType,
+			MIMESubType:       attSubType,
+			Id:                att.ContentID,
+			Encoding:          "base64",
+			Size:              uint32(att.Size),
+			Extended:          extended,
+			Disposition:       "attachment",
 			DispositionParams: map[string]string{"filename": att.Name},
 		})
 	}
 
 	return &imap.BodyStructure{
-		MIMEType: "multipart",
+		MIMEType:    "multipart",
 		MIMESubType: "mixed",
 		// TODO: Params: map[string]string{"boundary": ...},
 		// TODO: Size
-		Parts: parts,
+		Parts:    parts,
 		Extended: extended,
 	}, nil
 }
@@ -218,7 +218,7 @@ func attachmentHeader(att *protonmail.Attachment) message.Header {
 
 func mailAddress(addr *protonmail.MessageAddress) *mail.Address {
 	return &mail.Address{
-		Name: addr.Name,
+		Name:    addr.Name,
 		Address: addr.Address,
 	}
 }

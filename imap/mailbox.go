@@ -17,18 +17,18 @@ import (
 const delimiter = "/"
 
 type mailbox struct {
-	name string
+	name  string
 	label string
 	flags []string
 
-	u *user
+	u  *user
 	db *database.Mailbox
 
-	initialized bool
+	initialized     bool
 	initializedLock sync.Mutex
 
 	total, unread int
-	deleted map[string]struct{}
+	deleted       map[string]struct{}
 }
 
 func (mbox *mailbox) Name() string {
@@ -38,8 +38,8 @@ func (mbox *mailbox) Name() string {
 func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
 	return &imap.MailboxInfo{
 		Attributes: append(mbox.flags, imap.NoInferiorsAttr),
-		Delimiter: delimiter,
-		Name: mbox.name,
+		Delimiter:  delimiter,
+		Name:       mbox.name,
 	}, nil
 }
 
@@ -89,9 +89,9 @@ func (mbox *mailbox) sync() error {
 
 	filter := &protonmail.MessageFilter{
 		PageSize: 150,
-		Label: mbox.label,
-		Sort: "ID",
-		Asc: true,
+		Label:    mbox.label,
+		Sort:     "ID",
+		Asc:      true,
 	}
 
 	total := -1

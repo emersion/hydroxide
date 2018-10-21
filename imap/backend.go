@@ -12,9 +12,9 @@ import (
 var errNotYetImplemented = errors.New("not yet implemented")
 
 type backend struct {
-	sessions *auth.Manager
+	sessions      *auth.Manager
 	eventsManager *events.Manager
-	updates chan imapbackend.Update
+	updates       chan imapbackend.Update
 }
 
 func (be *backend) Login(username, password string) (imapbackend.User, error) {

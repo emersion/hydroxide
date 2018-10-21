@@ -13,8 +13,8 @@ const (
 )
 
 type Event struct {
-	ID      string `json:"EventID"`
-	Refresh EventRefresh
+	ID       string `json:"EventID"`
+	Refresh  EventRefresh
 	Messages []*EventMessage
 	Contacts []*EventContact
 	//ContactEmails
@@ -41,8 +41,8 @@ const (
 )
 
 type EventMessage struct {
-	ID      string
-	Action  EventAction
+	ID     string
+	Action EventAction
 
 	// Only populated for EventCreate
 	Created *Message

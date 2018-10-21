@@ -13,7 +13,7 @@ var ErrNotFound = errors.New("message not found in local database")
 
 var (
 	mailboxesBucket = []byte("mailboxes")
-	messagesBucket = []byte("messages")
+	messagesBucket  = []byte("messages")
 )
 
 func userMessage(b *bolt.Bucket, apiID string) (*protonmail.Message, error) {
@@ -74,7 +74,7 @@ func (u *User) Mailbox(labelID string) (*Mailbox, error) {
 
 func (u *User) Message(apiID string) (*protonmail.Message, error) {
 	var msg *protonmail.Message
-	err := u.db.View(func (tx *bolt.Tx) error {
+	err := u.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(messagesBucket)
 		if b == nil {
 			return ErrNotFound
@@ -181,7 +181,7 @@ func (u *User) UpdateMessage(apiID string, update *protonmail.EventMessageUpdate
 func (u *User) DeleteMessage(apiID string) (seqNums map[string]uint32, err error) {
 	seqNums = make(map[string]uint32)
 	err = u.db.Update(func(tx *bolt.Tx) error {
-		messages:= tx.Bucket(messagesBucket)
+		messages := tx.Bucket(messagesBucket)
 		if messages == nil {
 			return nil
 		}

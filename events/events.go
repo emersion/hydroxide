@@ -13,7 +13,7 @@ const pollInterval = 30 * time.Second
 type Receiver struct {
 	c *protonmail.Client
 
-	locker sync.Mutex
+	locker   sync.Mutex
 	channels []chan<- *protonmail.Event
 
 	poll chan struct{}
@@ -56,7 +56,7 @@ func (r *Receiver) Poll() {
 
 type Manager struct {
 	receivers map[string]*Receiver
-	locker sync.Mutex
+	locker    sync.Mutex
 }
 
 func NewManager() *Manager {
@@ -76,9 +76,9 @@ func (m *Manager) Register(c *protonmail.Client, username string, ch chan<- *pro
 		r.locker.Unlock()
 	} else {
 		r = &Receiver{
-			c: c,
+			c:        c,
 			channels: []chan<- *protonmail.Event{ch},
-			poll: make(chan struct{}),
+			poll:     make(chan struct{}),
 		}
 
 		go func() {

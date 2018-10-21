@@ -51,7 +51,7 @@ func mailboxDeleteMessage(b *bolt.Bucket, apiID string) (seqNum uint32, err erro
 
 type Mailbox struct {
 	labelID string
-	u *User
+	u       *User
 }
 
 func (mbox *Mailbox) bucket(tx *bolt.Tx) (*bolt.Bucket, error) {

@@ -143,26 +143,26 @@ func (msg *Message) Encrypt(to []*openpgp.Entity, signed *openpgp.Entity) (plain
 }
 
 type MessageFilter struct {
-	Page int
+	Page     int
 	PageSize int
-	Limit int
+	Limit    int
 
-	Label string
-	Sort string
-	Asc bool
-	Begin int64
-	End int64
-	Keyword string
-	To string
-	From string
-	Subject string
-	Attachments *bool
-	Starred *bool
-	Unread *bool
+	Label        string
+	Sort         string
+	Asc          bool
+	Begin        int64
+	End          int64
+	Keyword      string
+	To           string
+	From         string
+	Subject      string
+	Attachments  *bool
+	Starred      *bool
+	Unread       *bool
 	Conversation string
-	AddressID string
-	ID []string
-	ExternalID string
+	AddressID    string
+	ID           []string
+	ExternalID   string
 }
 
 func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Message, err error) {
@@ -202,7 +202,7 @@ func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Mes
 
 	var respData struct {
 		resp
-		Total int
+		Total    int
 		Messages []*Message
 	}
 	if err := c.doJSON(req, &respData); err != nil {
@@ -214,8 +214,8 @@ func (c *Client) ListMessages(filter *MessageFilter) (total int, messages []*Mes
 
 type MessageCount struct {
 	LabelID string
-	Total int
-	Unread int
+	Total   int
+	Unread  int
 }
 
 func (c *Client) CountMessages(address string) ([]*MessageCount, error) {
@@ -339,7 +339,7 @@ func (c *Client) UndeleteMessages(ids []string) error {
 func (c *Client) LabelMessages(labelID string, ids []string) error {
 	reqData := struct {
 		LabelID string
-		IDs []string
+		IDs     []string
 	}{labelID, ids}
 	req, err := c.newJSONRequest(http.MethodPut, "/messages/label", &reqData)
 	if err != nil {
@@ -353,7 +353,7 @@ func (c *Client) LabelMessages(labelID string, ids []string) error {
 func (c *Client) UnlabelMessages(labelID string, ids []string) error {
 	reqData := struct {
 		LabelID string
-		IDs []string
+		IDs     []string
 	}{labelID, ids}
 	req, err := c.newJSONRequest(http.MethodPut, "/messages/unlabel", &reqData)
 	if err != nil {
@@ -412,8 +412,8 @@ type MessagePackageSet struct {
 }
 
 type MessageBodyKey struct {
-	Algorithm   string
-	Key         string
+	Algorithm string
+	Key       string
 }
 
 func NewMessagePackageSet(attachmentKeys map[string]*packet.EncryptedKey) *MessagePackageSet {
@@ -493,7 +493,7 @@ func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (
 
 func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error) {
 	pkg := &MessagePackage{
-		Type: MessagePackageCleartext,
+		Type:      MessagePackageCleartext,
 		Signature: set.signature,
 	}
 	set.Addresses[addr] = pkg
@@ -502,7 +502,7 @@ func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error)
 	if set.BodyKey == nil || set.AttachmentKeys == nil {
 		set.BodyKey = &MessageBodyKey{
 			Algorithm: "aes256",
-			Key: base64.StdEncoding.EncodeToString(set.bodyKey.Key),
+			Key:       base64.StdEncoding.EncodeToString(set.bodyKey.Key),
 		}
 
 		set.AttachmentKeys = make(map[string]string, len(set.attachmentKeys))

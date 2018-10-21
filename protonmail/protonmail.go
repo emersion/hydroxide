@@ -25,7 +25,7 @@ type resp struct {
 func (r *resp) Err() error {
 	if err := r.RawAPIError; err != nil {
 		return &APIError{
-			Code: r.Code,
+			Code:    r.Code,
 			Message: err.Message,
 		}
 	}
@@ -41,7 +41,7 @@ type RawAPIError struct {
 }
 
 type APIError struct {
-	Code int
+	Code    int
 	Message string
 }
 

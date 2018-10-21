@@ -96,8 +96,8 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	}
 
 	senderAddress := &protonmail.MessageAddress{
-		Address:  fromAddr.Email,
-		Name:     fromAddr.DisplayName,
+		Address: fromAddr.Email,
+		Name:    fromAddr.DisplayName,
 	}
 
 	msg := &protonmail.Message{
@@ -125,9 +125,9 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		inReplyTo := inReplyToList[0].Address
 
 		filter := protonmail.MessageFilter{
-			Limit: 1,
+			Limit:      1,
 			ExternalID: inReplyTo,
-			AddressID: fromAddr.ID,
+			AddressID:  fromAddr.ID,
 		}
 		total, msgs, err := u.c.ListMessages(&filter)
 		if err != nil {

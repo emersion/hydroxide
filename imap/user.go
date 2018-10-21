@@ -4,18 +4,18 @@ import (
 	"log"
 	"sync"
 
-	"golang.org/x/crypto/openpgp"
 	"github.com/emersion/go-imap"
-	imapbackend "github.com/emersion/go-imap/backend"
 	"github.com/emersion/go-imap-specialuse"
+	imapbackend "github.com/emersion/go-imap/backend"
+	"golang.org/x/crypto/openpgp"
 
 	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/imap/database"
 	"github.com/emersion/hydroxide/protonmail"
 )
 
-var systemMailboxes = []struct{
-	name string
+var systemMailboxes = []struct {
+	name  string
 	label string
 	flags []string
 }{
@@ -34,25 +34,25 @@ type user struct {
 	u           *protonmail.User
 	privateKeys openpgp.EntityList
 
-	db *database.User
+	db             *database.User
 	eventsReceiver *events.Receiver
 
-	locker sync.Mutex
+	locker    sync.Mutex
 	mailboxes map[string]*mailbox
 
-	done chan<- struct{}
+	done      chan<- struct{}
 	eventSent chan struct{}
 }
 
 func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList) (*user, error) {
 	uu := &user{
-		c: c,
-		u: u,
+		c:           c,
+		u:           u,
 		privateKeys: privateKeys,
-		eventSent: make(chan struct{}),
+		eventSent:   make(chan struct{}),
 	}
 
-	db, err := database.Open(u.Name+".db")
+	db, err := database.Open(u.Name + ".db")
 	if err != nil {
 		return nil, err
 	}
@@ -84,11 +84,11 @@ func (u *user) initMailboxes() error {
 		}
 
 		u.mailboxes[data.label] = &mailbox{
-			name: data.name,
-			label: data.label,
-			flags: data.flags,
-			u: u,
-			db: mboxDB,
+			name:    data.name,
+			label:   data.label,
+			flags:   data.flags,
+			u:       u,
+			db:      mboxDB,
 			deleted: make(map[string]struct{}),
 		}
 	}
