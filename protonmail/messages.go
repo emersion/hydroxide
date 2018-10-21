@@ -491,6 +491,19 @@ func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (
 	}, nil
 }
 
+func cipherFunctionString(cipherFunc packet.CipherFunction) string {
+	switch cipherFunc {
+	case packet.CipherAES128:
+		return "aes128"
+	case packet.CipherAES192:
+		return "aes192"
+	case packet.CipherAES256:
+		return "aes256"
+	default:
+		panic("protonmail: unsupported cipher function")
+	}
+}
+
 func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error) {
 	pkg := &MessagePackage{
 		Type:      MessagePackageCleartext,
@@ -501,7 +514,7 @@ func (set *MessagePackageSet) AddCleartext(addr string) (*MessagePackage, error)
 
 	if set.BodyKey == nil || set.AttachmentKeys == nil {
 		set.BodyKey = &MessageBodyKey{
-			Algorithm: "aes256",
+			Algorithm: cipherFunctionString(set.bodyKey.CipherFunc),
 			Key:       base64.StdEncoding.EncodeToString(set.bodyKey.Key),
 		}
 

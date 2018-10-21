@@ -35,7 +35,7 @@ type Address struct {
 	Receive     int
 	Status      AddressStatus
 	Type        AddressType
-	Order       int
+	Order       int64
 	DisplayName string
 	Signature   string // HTML
 	HasKeys     int
