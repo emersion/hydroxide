@@ -9,13 +9,21 @@ import (
 	"golang.org/x/crypto/openpgp"
 )
 
+type PrivateKeyFlags int
+
+const (
+	PrivateKeyVerify  PrivateKeyFlags = 1
+	PrivateKeyEncrypt                 = 2
+)
+
 type PrivateKey struct {
 	ID          string
 	Version     int
-	PublicKey   string
+	Flags       PrivateKeyFlags
 	PrivateKey  string
 	Fingerprint string
 	Activation  interface{} // TODO
+	Primary     int
 }
 
 func (priv *PrivateKey) Entity() (*openpgp.Entity, error) {
