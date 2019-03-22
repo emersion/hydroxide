@@ -13,10 +13,13 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/openpgp"
 
+	"github.com/emersion/hydroxide/config"
 	"github.com/emersion/hydroxide/protonmail"
 )
 
-const authFile = "auth.json"
+func authFilePath() (string, error) {
+	return config.Path("auth.json")
+}
 
 type CachedAuth struct {
 	protonmail.Auth
@@ -26,7 +29,11 @@ type CachedAuth struct {
 }
 
 func readCachedAuths() (map[string]string, error) {
-	f, err := os.Open(authFile)
+	p, err := authFilePath()
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(p)
 	if os.IsNotExist(err) {
 		return nil, nil
 	} else if err != nil {
@@ -40,7 +47,11 @@ func readCachedAuths() (map[string]string, error) {
 }
 
 func saveAuths(auths map[string]string) error {
-	f, err := os.Create(authFile)
+	p, err := authFilePath()
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(p)
 	if err != nil {
 		return err
 	}
@@ -121,6 +132,19 @@ func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string)
 	cachedAuth.Auth = *auth
 
 	return c.Unlock(auth, cachedAuth.MailboxPassword)
+}
+
+func ListUsernames() ([]string, error) {
+	auths, err := readCachedAuths()
+	if err != nil {
+		return nil, err
+	}
+
+	l := make([]string, 0, len(auths))
+	for username, _ := range auths {
+		l = append(l, username)
+	}
+	return l, nil
 }
 
 func GeneratePassword() (secretKey *[32]byte, password string, err error) {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/boltdb/bolt"
 
+	"github.com/emersion/hydroxide/config"
 	"github.com/emersion/hydroxide/protonmail"
 )
 
@@ -223,8 +224,13 @@ func (u *User) Close() error {
 	return u.db.Close()
 }
 
-func Open(path string) (*User, error) {
-	db, err := bolt.Open(path, 0700, nil)
+func Open(filename string) (*User, error) {
+	p, err := config.Path(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := bolt.Open(p, 0700, nil)
 	if err != nil {
 		return nil, err
 	}

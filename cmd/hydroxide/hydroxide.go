@@ -138,6 +138,20 @@ func main() {
 		}
 
 		fmt.Println("Bridge password:", bridgePassword)
+	case "status":
+		usernames, err := auth.ListUsernames()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if len(usernames) == 0 {
+			fmt.Printf("No logged in user.\n")
+		} else {
+			fmt.Printf("%v logged in user(s):\n", len(usernames))
+			for _, u := range usernames {
+				fmt.Printf("- %v\n", u)
+			}
+		}
 	case "smtp":
 		port := os.Getenv("PORT")
 		if port == "" {
