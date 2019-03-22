@@ -11,31 +11,67 @@ Rationale:
 * Standard-compliant (we don't care about Microsoft Outlook)
 * Fully open-source
 
+## How does it work?
+
+hydroxide is a server that translates standard protocols (SMTP, IMAP, CardDAV)
+into ProtonMail API requests. It allows you to use your preferred e-mail clients
+and `git-send-email` with ProtonMail.
+
+    +-----------------+             +-------------+  ProtonMail  +--------------+
+    |                 | IMAP, SMTP  |             |     API      |              |
+    |  E-mail client  <------------->  hydroxide  <-------------->  ProtonMail  |
+    |                 |             |             |              |              |
+    +-----------------+             +-------------+              +--------------+
+
 ## Setup
 
 ### Go
 
-hydroxide is implemented with Go. Head to [Go website](https://golang.org)
-for setup information.
+hydroxide is implemented in Go. Head to [Go website](https://golang.org) for
+setup information.
 
-### Install and Setup
+### Installing
 
-Install hydroxide
+Start by installing hydroxide:
 
 ```shell
 go get github.com/emersion/hydroxide/cmd/hydroxide
 ```
 
-Your credentials will be stored on disk encrypted with a 32-byte random
-password. When configuring your client, you'll need this password.
+Then you'll need to login to ProtonMail via hydroxide, so that hydroxide can
+retrieve e-mails from ProtonMail. You can do so with this command:
 
 ```shell
 hydroxide auth <username>
 ```
 
+Once you're logged in, a "bridge password" will be printed. Don't close your
+terminal yet, as this password is not stored anywhere by hydroxide and will be
+needed when configuring your e-mail client.
+
+Your ProtonMail credentials are stored on disk encrypted with this bridge
+password (a 32-byte random password generated when logging in).
+
 ## Usage
 
 hydroxide can be used in multiple modes.
+
+### SMTP
+
+To run hydroxide as an SMTP server:
+
+```shell
+hydroxide smtp
+```
+
+Once the bridge is started, you can configure your e-mail client with the
+following settings:
+
+* Hostname: `localhost`
+* Port: 1025
+* Security: none
+* Username: your ProtonMail username
+* Password: the bridge password (not your ProtonMail password)
 
 ### CardDAV
 
@@ -53,14 +89,6 @@ For now, it only supports unencrypted local connections.
 
 ```shell
 hydroxide imap
-```
-
-### SMTP
-
-For now, it only supports unencrypted local connections.
-
-```shell
-hydroxide smtp
 ```
 
 ## License
