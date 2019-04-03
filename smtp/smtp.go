@@ -37,14 +37,22 @@ func formatHeader(h mail.Header) string {
 	return b.String()
 }
 
-type user struct {
+type session struct {
 	c           *protonmail.Client
 	u           *protonmail.User
 	privateKeys openpgp.EntityList
 	addrs       []*protonmail.Address
 }
 
-func (u *user) Send(from string, to []string, r io.Reader) error {
+func (s *session) Mail(from string) error {
+	return nil
+}
+
+func (s *session) Rcpt(to string) error {
+	return nil
+}
+
+func (s *session) Data(r io.Reader) error {
 	// Parse the incoming MIME message header
 	mr, err := mail.CreateReader(r)
 	if err != nil {
@@ -67,7 +75,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	rawFrom := fromList[0]
 	fromAddrStr := rawFrom.Address
 	var fromAddr *protonmail.Address
-	for _, addr := range u.addrs {
+	for _, addr := range s.addrs {
 		if strings.EqualFold(addr.Email, fromAddrStr) {
 			fromAddr = addr
 			break
@@ -87,7 +95,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	}
 
 	var privateKey *openpgp.Entity
-	for _, e := range u.privateKeys {
+	for _, e := range s.privateKeys {
 		if e.PrimaryKey.KeyId == encryptedPrivateKey.PrimaryKey.KeyId {
 			privateKey = e
 			break
@@ -129,7 +137,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 			ExternalID: inReplyTo,
 			AddressID:  fromAddr.ID,
 		}
-		total, msgs, err := u.c.ListMessages(&filter)
+		total, msgs, err := s.c.ListMessages(&filter)
 		if err != nil {
 			return err
 		}
@@ -138,7 +146,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		}
 	}
 
-	msg, err = u.c.CreateDraftMessage(msg, parentID)
+	msg, err = s.c.CreateDraftMessage(msg, parentID)
 	if err != nil {
 		return fmt.Errorf("cannot create draft message: %v", err)
 	}
@@ -214,7 +222,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 				pw.CloseWithError(cleartext.Close())
 			}()
 
-			att, err = u.c.CreateAttachment(att, pr)
+			att, err = s.c.CreateAttachment(att, pr)
 			if err != nil {
 				return fmt.Errorf("cannot upload attachment: %v", err)
 			}
@@ -240,7 +248,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		return err
 	}
 
-	msg, err = u.c.UpdateDraftMessage(msg)
+	msg, err = s.c.UpdateDraftMessage(msg)
 	if err != nil {
 		return fmt.Errorf("cannot update draft message: %v", err)
 	}
@@ -255,7 +263,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	var plaintextRecipients []string
 	encryptedRecipients := make(map[string]*openpgp.Entity)
 	for _, rcpt := range recipients {
-		resp, err := u.c.GetPublicKeys(rcpt.Address)
+		resp, err := s.c.GetPublicKeys(rcpt.Address)
 		if err != nil {
 			return fmt.Errorf("cannot get public key for address %q: %v", rcpt.Address, err)
 		}
@@ -330,7 +338,7 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 		outgoing.Packages = append(outgoing.Packages, encryptedSet)
 	}
 
-	_, _, err = u.c.SendMessage(outgoing)
+	_, _, err = s.c.SendMessage(outgoing)
 	if err != nil {
 		return fmt.Errorf("cannot send message: %v", err)
 	}
@@ -338,10 +346,12 @@ func (u *user) Send(from string, to []string, r io.Reader) error {
 	return nil
 }
 
-func (u *user) Logout() error {
-	u.c = nil
-	u.u = nil
-	u.privateKeys = nil
+func (s *session) Reset() {}
+
+func (s *session) Logout() error {
+	s.c = nil
+	s.u = nil
+	s.privateKeys = nil
 	return nil
 }
 
@@ -349,7 +359,7 @@ type backend struct {
 	sessions *auth.Manager
 }
 
-func (be *backend) Login(username, password string) (smtp.User, error) {
+func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (smtp.Session, error) {
 	c, privateKeys, err := be.sessions.Auth(username, password)
 	if err != nil {
 		return nil, err
@@ -367,10 +377,10 @@ func (be *backend) Login(username, password string) (smtp.User, error) {
 
 	// TODO: decrypt private keys in u.Addresses
 
-	return &user{c, u, privateKeys, addrs}, nil
+	return &session{c, u, privateKeys, addrs}, nil
 }
 
-func (be *backend) AnonymousLogin() (smtp.User, error) {
+func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
 	return nil, smtp.ErrAuthRequired
 }
 
