@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 
-	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/crypto/nacl/secretbox"
-	"golang.org/x/crypto/openpgp"
+	"github.com/keybase/go-crypto/bcrypt"
+	"github.com/keybase/go-crypto/nacl/secretbox"
+	"github.com/keybase/go-crypto/openpgp"
 
 	"github.com/emersion/hydroxide/config"
 	"github.com/emersion/hydroxide/protonmail"

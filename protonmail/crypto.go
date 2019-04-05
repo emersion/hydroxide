@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/keybase/go-crypto/openpgp"
+	"github.com/keybase/go-crypto/openpgp/packet"
 )
 
 // primaryIdentity returns the Identity marked as primary or the first identity
@@ -45,7 +45,7 @@ func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 
 	if candidateSubkey != -1 {
 		subkey := e.Subkeys[candidateSubkey]
-		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig, subkey.Sig.GetKeyFlags()}, true
 	}
 
 	// If we don't have any candidate subkeys for encryption and
@@ -54,7 +54,7 @@ func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 	// marked as ok to encrypt to, then we can obviously use it.
 	i := primaryIdentity(e)
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications && e.PrimaryKey.PubKeyAlgo.CanEncrypt() && !i.SelfSignature.KeyExpired(now) {
-		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
+		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature, i.SelfSignature.GetKeyFlags()}, true
 	}
 
 	// This Entity appears to be signing only.
@@ -78,14 +78,14 @@ func signingKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 
 	if candidateSubkey != -1 {
 		subkey := e.Subkeys[candidateSubkey]
-		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig, subkey.Sig.GetKeyFlags()}, true
 	}
 
 	// If we have no candidate subkey then we assume that it's ok to sign
 	// with the primary key.
 	i := primaryIdentity(e)
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign && !i.SelfSignature.KeyExpired(now) {
-		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
+		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature, i.SelfSignature.GetKeyFlags()}, true
 	}
 
 	return openpgp.Key{}, false

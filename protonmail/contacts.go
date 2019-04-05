@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/armor"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/keybase/go-crypto/openpgp"
+	"github.com/keybase/go-crypto/openpgp/armor"
+	"github.com/keybase/go-crypto/openpgp/packet"
 )
 
 type Contact struct {
@@ -146,7 +146,7 @@ func entityPrimaryKey(e *openpgp.Entity) *openpgp.Key {
 			break
 		}
 	}
-	return &openpgp.Key{e, e.PrimaryKey, e.PrivateKey, selfSig}
+	return &openpgp.Key{e, e.PrimaryKey, e.PrivateKey, selfSig, selfSig.GetKeyFlags()}
 }
 
 type detachedSignatureReader struct {

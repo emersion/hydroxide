@@ -9,8 +9,8 @@ import (
 
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/keybase/go-crypto/openpgp"
+	"github.com/keybase/go-crypto/openpgp/packet"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/protonmail"

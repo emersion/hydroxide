@@ -7,7 +7,7 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap-specialuse"
 	imapbackend "github.com/emersion/go-imap/backend"
-	"golang.org/x/crypto/openpgp"
+	"github.com/keybase/go-crypto/openpgp"
 
 	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/imap/database"

@@ -13,7 +13,7 @@ require (
 	github.com/emersion/go-vcard v0.0.0-20190105225839-8856043f13c5
 	github.com/emersion/go-webdav v0.0.0-20180509190321-4ef680e9a32f
 	github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c
-	golang.org/x/crypto v0.0.0-20190325154230-a5d413f7728c
+	github.com/keybase/go-crypto v0.0.0-20181127160227-255a5089e85a
 	golang.org/x/net v0.0.0-20190403144856-b630fd6fe46b
 	golang.org/x/sys v0.0.0-20190403152447-81d4e9dc473e
 	golang.org/x/text v0.3.0

@@ -12,7 +12,7 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
-	"golang.org/x/crypto/openpgp"
+	"github.com/keybase/go-crypto/openpgp"
 
 	"github.com/emersion/hydroxide/protonmail"
 )
