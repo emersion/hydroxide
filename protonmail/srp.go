@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"math/big"
 
+	"github.com/keybase/go-crypto/openpgp"
 	"github.com/keybase/go-crypto/openpgp/clearsign"
 )
 
@@ -20,10 +22,10 @@ func decodeModulus(msg string) ([]byte, error) {
 	}
 
 	// TODO: check signature key
-	// _, err := openpgp.CheckDetachedSignature(nil, bytes.NewReader(block.Plaintext), block.ArmoredSignature.Body)
-	// if err != nil && err != openpgperrors.ErrUnknownIssuer {
-	// 	return nil, err
-	// }
+	_, err := openpgp.CheckDetachedSignature(nil, bytes.NewReader(block.Plaintext), block.ArmoredSignature.Body)
+	if err != nil {
+		return nil, err
+	}
 
 	return base64.StdEncoding.DecodeString(string(block.Plaintext))
 }
