@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"log"
 	"math/big"
 
 	"golang.org/x/crypto/openpgp"
@@ -22,10 +23,11 @@ func decodeModulus(msg string) ([]byte, error) {
 		return nil, errors.New("invalid modulus signed PGP block")
 	}
 
-	// TODO: check signature key
+	// TODO: check signature and signature key
 	_, err := openpgp.CheckDetachedSignature(nil, bytes.NewReader(block.Plaintext), block.ArmoredSignature.Body)
 	if err != nil && err != openpgperrors.ErrUnknownIssuer {
-		return nil, err
+		//return nil, fmt.Errorf("failed to decode modulus: %v", err)
+		log.Println("warning: failed to check SRP modulus signature:", err)
 	}
 
 	return base64.StdEncoding.DecodeString(string(block.Plaintext))
