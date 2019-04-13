@@ -2,7 +2,7 @@ package protonmail
 
 import (
 	"encoding/base64"
-	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -129,7 +129,7 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 
 	proofs, err := srp([]byte(password), info)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("SRP failed during auth: %v", err)
 	}
 
 	reqData := &authReq{
@@ -223,7 +223,7 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 	if auth.keySalt != "" {
 		keySalt, err := base64.StdEncoding.DecodeString(auth.keySalt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("malformed key salt: %v", err)
 		}
 
 		passphraseBytes, err = computeKeyPassword(passphraseBytes, keySalt)
@@ -236,15 +236,15 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 
 	keyRing, err := openpgp.ReadArmoredKeyRing(strings.NewReader(auth.privateKey))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read auth key ring: %v", err)
 	}
 	if len(keyRing) == 0 {
-		return nil, errors.New("auth key ring is empty")
+		return nil, fmt.Errorf("auth key ring is empty")
 	}
 
 	for _, e := range keyRing {
 		if err := unlockKey(e, passphraseBytes); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to unlock auth key ring: %v", err)
 		}
 	}
 
@@ -252,18 +252,18 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 
 	block, err := armor.Decode(strings.NewReader(auth.accessToken))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("malformed access token: %v", err)
 	}
 
 	msg, err := openpgp.ReadMessage(block.Body, keyRing, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read access token: %v", err)
 	}
 
 	// TODO: maybe check signature
 	accessTokenBytes, err := ioutil.ReadAll(msg.UnverifiedBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read access token: %v", err)
 	}
 
 	c.uid = auth.UID
