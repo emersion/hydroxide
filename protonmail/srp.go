@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"math/big"
@@ -20,7 +21,7 @@ var randReader io.Reader = rand.Reader
 func decodeModulus(msg string) ([]byte, error) {
 	block, _ := clearsign.Decode([]byte(msg))
 	if block == nil {
-		return nil, errors.New("invalid modulus signed PGP block")
+		return nil, errors.New("invalid SRP modulus signed PGP block")
 	}
 
 	// TODO: check signature and signature key
@@ -30,7 +31,12 @@ func decodeModulus(msg string) ([]byte, error) {
 		log.Println("warning: failed to check SRP modulus signature:", err)
 	}
 
-	return base64.StdEncoding.DecodeString(string(block.Plaintext))
+	b, err := base64.StdEncoding.DecodeString(string(block.Plaintext))
+	if err != nil {
+		return nil, fmt.Errorf("malformed SRP modulus: %v", err)
+	}
+
+	return b, nil
 }
 
 func reverse(b []byte) {
@@ -140,11 +146,11 @@ func generateProofs(l int, hash func([]byte) []byte, modulusBytes, hashedBytes, 
 func (p *proofs) VerifyServerProof(serverProofString string) error {
 	serverProof, err := base64.StdEncoding.DecodeString(serverProofString)
 	if err != nil {
-		return err
+		return fmt.Errorf("malformed SRP server proof: %v", err)
 	}
 
 	if subtle.ConstantTimeCompare(p.expectedServerProof, serverProof) != 1 {
-		return errors.New("invalid server proof")
+		return errors.New("invalid SRP server proof")
 	}
 	return nil
 }
@@ -158,12 +164,12 @@ func srp(password []byte, info *AuthInfo) (*proofs, error) {
 
 	serverEphemeral, err := base64.StdEncoding.DecodeString(info.serverEphemeral)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("malformed SRP server ephemeral: %v", err)
 	}
 
 	salt, err := base64.StdEncoding.DecodeString(info.salt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("malformed SRP salt: %v", err)
 	}
 
 	hashed, err := hashPassword(info.version, password, salt, modulus)

@@ -280,7 +280,7 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 		for _, key := range addr.Keys {
 			entity, err := key.Entity()
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to read key %q: %v", addr.Email, err)
 			}
 
 			found := false
@@ -295,7 +295,7 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 			}
 
 			if err := unlockKey(entity, passphraseBytes); err != nil {
-				log.Printf("warning: failed to unlock key %v: %v", entity.PrimaryKey.KeyIdString(), err)
+				log.Printf("warning: failed to unlock key %q %v: %v", addr.Email, entity.PrimaryKey.KeyIdString(), err)
 				continue
 			}
 
