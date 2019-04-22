@@ -59,7 +59,8 @@ func receiveEvents(c *protonmail.Client, ch chan<- *protonmail.Event) {
 func main() {
 	flag.Parse()
 
-	switch flag.Arg(0) {
+	cmd := flag.Arg(0)
+	switch cmd {
 	case "auth":
 		username := flag.Arg(1)
 		if username == "" {
@@ -275,8 +276,13 @@ func main() {
 		log.Println("Starting CardDAV server at", s.Addr)
 		log.Fatal(s.ListenAndServe())
 	default:
-		log.Fatal("usage: hydroxide carddav")
-		log.Fatal("usage: hydroxide smtp")
-		log.Fatal("usage: hydroxide auth <username>")
+		log.Println("usage: hydroxide carddav")
+		log.Println("usage: hydroxide smtp")
+		log.Println("usage: hydroxide auth <username>")
+		log.Println("usage: hydroxide export-secret-keys <username>")
+		log.Println("usage: hydroxide status")
+		if cmd != "help" {
+			log.Fatal("Unrecognized command")
+		}
 	}
 }
