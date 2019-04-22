@@ -15,6 +15,8 @@ import (
 	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-smtp"
 	"github.com/howeyc/gopass"
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/armor"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
@@ -60,6 +62,9 @@ func main() {
 	switch flag.Arg(0) {
 	case "auth":
 		username := flag.Arg(1)
+		if username == "" {
+			log.Fatal("usage: hydroxide auth <username>")
+		}
 
 		c := newClient()
 
@@ -151,6 +156,39 @@ func main() {
 			for _, u := range usernames {
 				fmt.Printf("- %v\n", u)
 			}
+		}
+	case "export-secret-keys":
+		username := flag.Arg(1)
+		if username == "" {
+			log.Fatal("usage: hydroxide export-secret-keys <username>")
+		}
+
+		var bridgePassword string
+		fmt.Printf("Bridge password: ")
+		if pass, err := gopass.GetPasswd(); err != nil {
+			log.Fatal(err)
+		} else {
+			bridgePassword = string(pass)
+		}
+
+		_, privateKeys, err := auth.NewManager(newClient).Auth(username, bridgePassword)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		wc, err := armor.Encode(os.Stdout, openpgp.PrivateKeyType, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, key := range privateKeys {
+			if err := key.SerializePrivate(wc, nil); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		if err := wc.Close(); err != nil {
+			log.Fatal(err)
 		}
 	case "smtp":
 		port := os.Getenv("PORT")
