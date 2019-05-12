@@ -11,6 +11,8 @@ Rationale:
 * Standard-compliant (we don't care about Microsoft Outlook)
 * Fully open-source
 
+Feel free to join the IRC channel: ##emersion on irc.freenode.net.
+
 ## How does it work?
 
 hydroxide is a server that translates standard protocols (SMTP, IMAP, CardDAV)
