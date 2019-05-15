@@ -29,10 +29,9 @@ func toPMAddressList(addresses []*mail.Address) []*protonmail.MessageAddress {
 
 func formatHeader(h mail.Header) string {
 	var b bytes.Buffer
-	for k, values := range h.Header {
-		for _, v := range values {
-			b.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
-		}
+	fields := h.Fields()
+	for fields.Next() {
+		b.WriteString(fmt.Sprintf("%s: %s\r\n", fields.Key(), fields.Value()))
 	}
 	return b.String()
 }
@@ -168,7 +167,7 @@ func (s *session) Data(r io.Reader) error {
 		}
 
 		switch h := p.Header.(type) {
-		case mail.TextHeader:
+		case *mail.InlineHeader:
 			t, _, err := h.ContentType()
 			if err != nil {
 				break
@@ -183,7 +182,7 @@ func (s *session) Data(r io.Reader) error {
 			if _, err := io.Copy(body, p.Body); err != nil {
 				return err
 			}
-		case mail.AttachmentHeader:
+		case *mail.AttachmentHeader:
 			t, _, err := h.ContentType()
 			if err != nil {
 				break

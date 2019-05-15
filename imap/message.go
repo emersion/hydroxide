@@ -27,10 +27,9 @@ func messageID(msg *protonmail.Message) string {
 
 func formatHeader(h mail.Header) string {
 	var b bytes.Buffer
-	for k, values := range h.Header {
-		for _, v := range values {
-			b.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
-		}
+	fields := h.Fields()
+	for fields.Next() {
+		b.WriteString(fmt.Sprintf("%s: %s\r\n", fields.Key(), fields.Value()))
 	}
 	return b.String()
 }
@@ -195,7 +194,7 @@ func (mbox *mailbox) attachmentBody(att *protonmail.Attachment) (io.Reader, erro
 }
 
 func inlineHeader(msg *protonmail.Message) message.Header {
-	h := mail.NewTextHeader()
+	var h mail.InlineHeader
 	if msg.MIMEType != "" {
 		h.SetContentType(msg.MIMEType, nil)
 	} else {
@@ -206,7 +205,7 @@ func inlineHeader(msg *protonmail.Message) message.Header {
 }
 
 func attachmentHeader(att *protonmail.Attachment) message.Header {
-	h := mail.NewAttachmentHeader()
+	var h mail.AttachmentHeader
 	h.SetContentType(att.MIMEType, nil)
 	h.Set("Content-Transfer-Encoding", "base64")
 	h.SetFilename(att.Name)
@@ -232,7 +231,7 @@ func mailAddressList(addresses []*protonmail.MessageAddress) []*mail.Address {
 }
 
 func messageHeader(msg *protonmail.Message) message.Header {
-	h := mail.NewHeader()
+	var h mail.Header
 	h.SetContentType("multipart/mixed", nil)
 	h.SetDate(time.Unix(msg.Time, 0))
 	h.SetSubject(msg.Subject)
@@ -464,7 +463,7 @@ func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp
 		}
 
 		switch h := p.Header.(type) {
-		case mail.TextHeader:
+		case *mail.InlineHeader:
 			t, _, err := h.ContentType()
 			if err != nil {
 				break
@@ -479,7 +478,7 @@ func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp
 			if _, err := io.Copy(body, p.Body); err != nil {
 				return nil, err
 			}
-		case mail.AttachmentHeader:
+		case *mail.AttachmentHeader:
 			t, _, err := h.ContentType()
 			if err != nil {
 				break

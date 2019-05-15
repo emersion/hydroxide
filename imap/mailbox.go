@@ -315,9 +315,14 @@ func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint3
 
 		h := messageHeader(msg)
 		for key, wantValues := range c.Header {
-			values, ok := h[key]
+			fields := h.FieldsByKey(key)
+			var values []string
+			for fields.Next() {
+				values = append(values, fields.Value())
+			}
+
 			for _, wantValue := range wantValues {
-				if wantValue == "" && !ok {
+				if wantValue == "" && len(values) == 0 {
 					return nil
 				}
 				if wantValue != "" {
