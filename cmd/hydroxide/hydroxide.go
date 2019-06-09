@@ -206,7 +206,7 @@ func main() {
 		s.AllowInsecureAuth = true // TODO: remove this
 		//s.Debug = os.Stdout
 
-		log.Println("Starting SMTP server at", s.Addr)
+		log.Println("SMTP server listening on", s.Addr)
 		log.Fatal(s.ListenAndServe())
 	case "imap":
 		port := os.Getenv("PORT")
@@ -225,7 +225,7 @@ func main() {
 		s.Enable(imapspacialuse.NewExtension())
 		s.Enable(imapmove.NewExtension())
 
-		log.Println("Starting IMAP server at", s.Addr)
+		log.Println("IMAP server listening on", s.Addr)
 		log.Fatal(s.ListenAndServe())
 	case "carddav":
 		port := os.Getenv("PORT")
@@ -273,11 +273,12 @@ func main() {
 			}),
 		}
 
-		log.Println("Starting CardDAV server at", s.Addr)
+		log.Println("CardDAV server listening on", s.Addr)
 		log.Fatal(s.ListenAndServe())
 	default:
-		log.Println("usage: hydroxide carddav")
 		log.Println("usage: hydroxide smtp")
+		log.Println("usage: hydroxide imap")
+		log.Println("usage: hydroxide carddav")
 		log.Println("usage: hydroxide auth <username>")
 		log.Println("usage: hydroxide export-secret-keys <username>")
 		log.Println("usage: hydroxide status")
