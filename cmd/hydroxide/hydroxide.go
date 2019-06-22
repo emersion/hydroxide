@@ -34,6 +34,75 @@ func newClient() *protonmail.Client {
 	}
 }
 
+func listenAndServeSMTP(addr string, authManager *auth.Manager) error {
+	be := smtpbackend.New(authManager)
+	s := smtp.NewServer(be)
+	s.Addr = addr
+	s.Domain = "localhost"     // TODO: make this configurable
+	s.AllowInsecureAuth = true // TODO: remove this
+	//s.Debug = os.Stdout
+
+	log.Println("SMTP server listening on", s.Addr)
+	return s.ListenAndServe()
+}
+
+func listenAndServeIMAP(addr string, authManager *auth.Manager, eventsManager *events.Manager) error {
+	be := imapbackend.New(authManager, eventsManager)
+	s := imapserver.New(be)
+	s.Addr = addr
+	s.AllowInsecureAuth = true // TODO: remove this
+	//s.Debug = os.Stdout
+
+	s.Enable(imapspacialuse.NewExtension())
+	s.Enable(imapmove.NewExtension())
+
+	log.Println("IMAP server listening on", s.Addr)
+	return s.ListenAndServe()
+}
+
+func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager) error {
+	handlers := make(map[string]http.Handler)
+
+	s := &http.Server{
+		Addr: addr,
+		Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("WWW-Authenticate", "Basic")
+
+			username, password, ok := req.BasicAuth()
+			if !ok {
+				resp.WriteHeader(http.StatusUnauthorized)
+				io.WriteString(resp, "Credentials are required")
+				return
+			}
+
+			c, privateKeys, err := authManager.Auth(username, password)
+			if err != nil {
+				if err == auth.ErrUnauthorized {
+					resp.WriteHeader(http.StatusUnauthorized)
+				} else {
+					resp.WriteHeader(http.StatusInternalServerError)
+				}
+				io.WriteString(resp, err.Error())
+				return
+			}
+
+			h, ok := handlers[username]
+			if !ok {
+				ch := make(chan *protonmail.Event)
+				eventsManager.Register(c, username, ch, nil)
+				h = carddav.NewHandler(c, privateKeys, ch)
+
+				handlers[username] = h
+			}
+
+			h.ServeHTTP(resp, req)
+		}),
+	}
+
+	log.Println("CardDAV server listening on", s.Addr)
+	return s.ListenAndServe()
+}
+
 func main() {
 	flag.Parse()
 
@@ -174,85 +243,30 @@ func main() {
 		if port == "" {
 			port = "1025"
 		}
+		addr := "127.0.0.1:" + port
 
-		sessions := auth.NewManager(newClient)
-
-		be := smtpbackend.New(sessions)
-		s := smtp.NewServer(be)
-		s.Addr = "127.0.0.1:" + port
-		s.Domain = "localhost"     // TODO: make this configurable
-		s.AllowInsecureAuth = true // TODO: remove this
-		//s.Debug = os.Stdout
-
-		log.Println("SMTP server listening on", s.Addr)
-		log.Fatal(s.ListenAndServe())
+		authManager := auth.NewManager(newClient)
+		log.Fatal(listenAndServeSMTP(addr, authManager))
 	case "imap":
 		port := os.Getenv("PORT")
 		if port == "" {
 			port = "1143"
 		}
+		addr := "127.0.0.1:" + port
 
-		sessions := auth.NewManager(newClient)
+		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-
-		be := imapbackend.New(sessions, eventsManager)
-		s := imapserver.New(be)
-		s.Addr = "127.0.0.1:" + port
-		s.AllowInsecureAuth = true // TODO: remove this
-		//s.Debug = os.Stdout
-		s.Enable(imapspacialuse.NewExtension())
-		s.Enable(imapmove.NewExtension())
-
-		log.Println("IMAP server listening on", s.Addr)
-		log.Fatal(s.ListenAndServe())
+		log.Fatal(listenAndServeIMAP(addr, authManager, eventsManager))
 	case "carddav":
 		port := os.Getenv("PORT")
 		if port == "" {
 			port = "8080"
 		}
+		addr := "127.0.0.1:" + port
 
-		sessions := auth.NewManager(newClient)
+		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		handlers := make(map[string]http.Handler)
-
-		s := &http.Server{
-			Addr: "127.0.0.1:" + port,
-			Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-				resp.Header().Set("WWW-Authenticate", "Basic")
-
-				username, password, ok := req.BasicAuth()
-				if !ok {
-					resp.WriteHeader(http.StatusUnauthorized)
-					io.WriteString(resp, "Credentials are required")
-					return
-				}
-
-				c, privateKeys, err := sessions.Auth(username, password)
-				if err != nil {
-					if err == auth.ErrUnauthorized {
-						resp.WriteHeader(http.StatusUnauthorized)
-					} else {
-						resp.WriteHeader(http.StatusInternalServerError)
-					}
-					io.WriteString(resp, err.Error())
-					return
-				}
-
-				h, ok := handlers[username]
-				if !ok {
-					ch := make(chan *protonmail.Event)
-					eventsManager.Register(c, username, ch, nil)
-					h = carddav.NewHandler(c, privateKeys, ch)
-
-					handlers[username] = h
-				}
-
-				h.ServeHTTP(resp, req)
-			}),
-		}
-
-		log.Println("CardDAV server listening on", s.Addr)
-		log.Fatal(s.ListenAndServe())
+		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager))
 	default:
 		log.Println("usage: hydroxide smtp")
 		log.Println("usage: hydroxide imap")
