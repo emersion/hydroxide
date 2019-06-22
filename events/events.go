@@ -28,6 +28,10 @@ func (r *Receiver) receiveEvents() {
 		event, err := r.c.GetEvent(last)
 		if err != nil {
 			log.Println("cannot receive event:", err)
+			select {
+			case <-t.C:
+			case <-r.poll:
+			}
 			continue
 		}
 		last = event.ID
