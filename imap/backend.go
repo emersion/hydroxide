@@ -3,6 +3,7 @@ package imap
 import (
 	"errors"
 
+	"github.com/emersion/go-imap"
 	imapbackend "github.com/emersion/go-imap/backend"
 
 	"github.com/emersion/hydroxide/auth"
@@ -17,7 +18,7 @@ type backend struct {
 	updates       chan imapbackend.Update
 }
 
-func (be *backend) Login(username, password string) (imapbackend.User, error) {
+func (be *backend) Login(info *imap.ConnInfo, username, password string) (imapbackend.User, error) {
 	c, privateKeys, err := be.sessions.Auth(username, password)
 	if err != nil {
 		return nil, err
