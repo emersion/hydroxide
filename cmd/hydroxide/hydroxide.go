@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
 	imapmove "github.com/emersion/go-imap-move"
 	imapspacialuse "github.com/emersion/go-imap-specialuse"
@@ -32,27 +31,6 @@ func newClient() *protonmail.Client {
 		AppVersion:   "Web_3.15.34",
 		ClientID:     "Web",
 		ClientSecret: "4957cc9a2e0a2a49d02475c9d013478d",
-	}
-}
-
-func receiveEvents(c *protonmail.Client, ch chan<- *protonmail.Event) {
-	t := time.NewTicker(time.Minute)
-	defer t.Stop()
-
-	var last string
-	for range t.C {
-		event, err := c.GetEvent(last)
-		if err != nil {
-			log.Println("Cannot receive event:", err)
-			continue
-		}
-
-		if event.ID == last {
-			continue
-		}
-		last = event.ID
-
-		ch <- event
 	}
 }
 
