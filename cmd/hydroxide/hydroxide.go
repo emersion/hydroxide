@@ -267,7 +267,23 @@ func main() {
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager))
+	case "serve":
+		authManager := auth.NewManager(newClient)
+		eventsManager := events.NewManager()
+
+		done := make(chan error, 3)
+		go func() {
+			done <- listenAndServeSMTP("127.0.0.1:1025", authManager)
+		}()
+		go func() {
+			done <- listenAndServeIMAP("127.0.0.1:1143", authManager, eventsManager)
+		}()
+		go func() {
+			done <- listenAndServeCardDAV("127.0.0.1:8080", authManager, eventsManager)
+		}()
+		log.Fatal(<-done)
 	default:
+		log.Println("usage: hydroxide serve")
 		log.Println("usage: hydroxide smtp")
 		log.Println("usage: hydroxide imap")
 		log.Println("usage: hydroxide carddav")
