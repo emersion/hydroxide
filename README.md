@@ -58,6 +58,8 @@ password (a 32-byte random password generated when logging in).
 
 hydroxide can be used in multiple modes.
 
+> Don't start hydroxide multiple times, instead you can use `hydroxide server`.
+
 ### SMTP
 
 To run hydroxide as an SMTP server:
