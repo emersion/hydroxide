@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 
 	"github.com/emersion/go-message/mail"
@@ -118,6 +119,8 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	// Create an empty draft
+	log.Println("creating draft message")
+
 	plaintext, err := msg.Encrypt([]*openpgp.Entity{privateKey}, privateKey)
 	if err != nil {
 		return err
@@ -206,6 +209,8 @@ func (s *session) Data(r io.Reader) error {
 				return fmt.Errorf("cannot generate attachment key: %v", err)
 			}
 
+			log.Printf("uploading message attachment %q", filename)
+
 			pr, pw := io.Pipe()
 
 			go func() {
@@ -235,6 +240,8 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	// Encrypt the body and update the draft
+	log.Println("uploading message body")
+
 	msg.MIMEType = bodyType
 	plaintext, err = msg.Encrypt([]*openpgp.Entity{privateKey}, privateKey)
 	if err != nil {
@@ -282,6 +289,7 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	// Create and send the outgoing message
+	log.Println("sending message")
 	outgoing := &protonmail.OutgoingMessage{ID: msg.ID}
 
 	if len(plaintextRecipients) > 0 {
@@ -375,6 +383,8 @@ func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (sm
 	}
 
 	// TODO: decrypt private keys in u.Addresses
+
+	log.Println("%q logged in", username)
 
 	return &session{c, u, privateKeys, addrs}, nil
 }
