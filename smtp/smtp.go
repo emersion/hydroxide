@@ -384,7 +384,7 @@ func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (sm
 
 	// TODO: decrypt private keys in u.Addresses
 
-	log.Println("%q logged in", username)
+	log.Printf("%s logged in", username)
 
 	return &session{c, u, privateKeys, addrs}, nil
 }
