@@ -58,7 +58,8 @@ password (a 32-byte random password generated when logging in).
 
 hydroxide can be used in multiple modes.
 
-> Don't start hydroxide multiple times, instead you can use `hydroxide server`.
+> Don't start hydroxide multiple times, instead you can use `hydroxide serve`.
+> This requires ports 1025 (smtp), 1143 (imap), and 8080 (carddav).
 
 ### SMTP
 
