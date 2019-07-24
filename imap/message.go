@@ -132,7 +132,11 @@ func (mbox *mailbox) fetchBodyStructure(msg *protonmail.Message, extended bool) 
 		}
 	}
 
-	inlineType, inlineSubType := splitMIMEType(msg.MIMEType)
+	inlineType := "text"
+	inlineSubType := "html"
+	if msg.MIMEType != "" {
+		inlineType, inlineSubType = splitMIMEType(msg.MIMEType)
+	}
 	parts := []*imap.BodyStructure{
 		&imap.BodyStructure{
 			MIMEType:    inlineType,
