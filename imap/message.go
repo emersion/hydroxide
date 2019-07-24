@@ -348,10 +348,19 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 			return nil, err
 		}
 
-		if section.Specifier == imap.TextSpecifier {
+		switch section.Specifier {
+		case imap.TextSpecifier:
+			// The header hasn't been requested. Discard it.
 			b.Reset()
+		case imap.EntireSpecifier:
+			if len(section.Path) > 0 {
+				// When selecting a specific part by index, IMAP servers
+				// return only the text, not the associated MIME header.
+				b.Reset()
+			}
 		}
 
+		// Write the body, if requested
 		switch section.Specifier {
 		case imap.EntireSpecifier, imap.TextSpecifier:
 			r, err := getBody()
