@@ -283,13 +283,16 @@ func main() {
 		}()
 		log.Fatal(<-done)
 	default:
-		log.Println("usage: hydroxide serve")
-		log.Println("usage: hydroxide smtp")
-		log.Println("usage: hydroxide imap")
-		log.Println("usage: hydroxide carddav")
-		log.Println("usage: hydroxide auth <username>")
-		log.Println("usage: hydroxide export-secret-keys <username>")
-		log.Println("usage: hydroxide status")
+		log.Println(`
+usage: hydroxide <command>
+commands:
+	auth <username>		Login to ProtonMail via hydroxide
+	export-secret-keys	Export keys
+	smtp			Run hydroxide as an SMTP server
+	imap			Run hydroxide as an IMAP server
+	carddav			Run hydroxide as a CardDAV server
+	serve			Run all servers
+	status			View hydroxide status`)
 		if cmd != "help" {
 			log.Fatal("Unrecognized command")
 		}
