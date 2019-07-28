@@ -283,8 +283,8 @@ func main() {
 		}()
 		log.Fatal(<-done)
 	default:
-		log.Println(`
-usage: hydroxide <command>
+		log.Println(
+`usage: hydroxide <command>
 commands:
 	auth <username>		Login to ProtonMail via hydroxide
 	export-secret-keys	Export keys
