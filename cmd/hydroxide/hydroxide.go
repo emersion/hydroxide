@@ -104,12 +104,27 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 }
 
 func main() {
+	// Register flags
+	smtpHost := flag.String("smtp-host", "127.0.0.1", "Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1")
+	smtpPort := flag.String("smtp-port", "1025", "SMTP port on which hydroxide listens, defaults to 1025")
+
+	imapHost := flag.String("imap-host", "127.0.0.1", "Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1")
+	imapPort := flag.String("imap-port", "1143", "IMAP port on which hydroxide listens, defaults to 1143")
+
+	carddavHost := flag.String("carddav-host", "127.0.0.1", "Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
+	carddavPort := flag.String("carddav-port", "8080", "CardDAV port on which hydroxide listens, defaults to 8080")
+
+	// Register arguments
+	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
+	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
+
 	flag.Parse()
 
 	cmd := flag.Arg(0)
 	switch cmd {
 	case "auth":
-		username := flag.Arg(1)
+		authCmd.Parse(os.Args[2:])
+		username := authCmd.Arg(1)
 		if username == "" {
 			log.Fatal("usage: hydroxide auth <username>")
 		}
@@ -206,7 +221,8 @@ func main() {
 			}
 		}
 	case "export-secret-keys":
-		username := flag.Arg(1)
+		exportSecretKeysCmd.Parse(os.Args[2:])
+		username := exportSecretKeysCmd.Arg(1)
 		if username == "" {
 			log.Fatal("usage: hydroxide export-secret-keys <username>")
 		}
@@ -239,60 +255,62 @@ func main() {
 			log.Fatal(err)
 		}
 	case "smtp":
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "1025"
-		}
-		addr := "127.0.0.1:" + port
-
+		addr := *smtpHost + ":" + *smtpPort
 		authManager := auth.NewManager(newClient)
 		log.Fatal(listenAndServeSMTP(addr, authManager))
 	case "imap":
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "1143"
-		}
-		addr := "127.0.0.1:" + port
-
+		addr := *imapHost + ":" + *imapPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 		log.Fatal(listenAndServeIMAP(addr, authManager, eventsManager))
 	case "carddav":
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "8080"
-		}
-		addr := "127.0.0.1:" + port
-
+		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager))
 	case "serve":
+		smtpAddr := *smtpHost + ":" + *smtpPort
+		imapAddr := *imapHost + ":" + *imapPort
+		carddavAddr := *carddavHost + ":" + *carddavPort
+
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 
 		done := make(chan error, 3)
 		go func() {
-			done <- listenAndServeSMTP("127.0.0.1:1025", authManager)
+			done <- listenAndServeSMTP(smtpAddr, authManager)
 		}()
 		go func() {
-			done <- listenAndServeIMAP("127.0.0.1:1143", authManager, eventsManager)
+			done <- listenAndServeIMAP(imapAddr, authManager, eventsManager)
 		}()
 		go func() {
-			done <- listenAndServeCardDAV("127.0.0.1:8080", authManager, eventsManager)
+			done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager)
 		}()
 		log.Fatal(<-done)
 	default:
-		log.Println(
-`usage: hydroxide <command>
-commands:
-	auth <username>		Login to ProtonMail via hydroxide
-	export-secret-keys	Export keys
-	smtp			Run hydroxide as an SMTP server
-	imap			Run hydroxide as an IMAP server
-	carddav			Run hydroxide as a CardDAV server
-	serve			Run all servers
-	status			View hydroxide status`)
+		log.Println(`usage: hydroxide <command> <flags>
+		commands:
+			auth <username>		Login to ProtonMail via hydroxide
+			export-secret-keys	Export keys
+			smtp			Run hydroxide as an SMTP server
+			imap			Run hydroxide as an IMAP server
+			carddav			Run hydroxide as a CardDAV server
+			serve			Run all servers
+			status			View hydroxide status
+			
+		flags:
+			-smtp-host example.com
+							Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+			-imap-host example.com
+							Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
+			-carddav-host example.com
+							Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+			-smtp-port example.com
+							SMTP port on which hydroxide listens, defaults to 1025
+			-imap-port example.com
+							IMAP port on which hydroxide listens, defaults to 1143
+			-carddav-port example.com
+							CardDAV port on which hydroxide listens, defaults to 8080`)
 		if cmd != "help" {
 			log.Fatal("Unrecognized command")
 		}
