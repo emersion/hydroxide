@@ -14,7 +14,7 @@ type PrivateKeyFlags int
 
 const (
 	PrivateKeyVerify  PrivateKeyFlags = 1
-	PrivateKeyEncrypt                 = 2
+	PrivateKeyEncrypt PrivateKeyFlags = 2
 )
 
 type PrivateKey struct {

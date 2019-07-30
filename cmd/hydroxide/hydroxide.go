@@ -21,6 +21,7 @@ import (
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/events"
 	imapbackend "github.com/emersion/hydroxide/imap"
+	"github.com/emersion/hydroxide/imports"
 	"github.com/emersion/hydroxide/protonmail"
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
@@ -104,7 +105,6 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 }
 
 func main() {
-	// Register flags
 	smtpHost := flag.String("smtp-host", "127.0.0.1", "Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	smtpPort := flag.String("smtp-port", "1025", "SMTP port on which hydroxide listens, defaults to 1025")
 
@@ -114,9 +114,9 @@ func main() {
 	carddavHost := flag.String("carddav-host", "127.0.0.1", "Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	carddavPort := flag.String("carddav-port", "8080", "CardDAV port on which hydroxide listens, defaults to 8080")
 
-	// Register arguments
 	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
+	importMessagesCmd := flag.NewFlagSet("import-messages", flag.ExitOnError)
 
 	flag.Parse()
 
@@ -124,7 +124,7 @@ func main() {
 	switch cmd {
 	case "auth":
 		authCmd.Parse(os.Args[2:])
-		username := authCmd.Arg(1)
+		username := authCmd.Arg(0)
 		if username == "" {
 			log.Fatal("usage: hydroxide auth <username>")
 		}
@@ -222,7 +222,7 @@ func main() {
 		}
 	case "export-secret-keys":
 		exportSecretKeysCmd.Parse(os.Args[2:])
-		username := exportSecretKeysCmd.Arg(1)
+		username := exportSecretKeysCmd.Arg(0)
 		if username == "" {
 			log.Fatal("usage: hydroxide export-secret-keys <username>")
 		}
@@ -252,6 +252,38 @@ func main() {
 		}
 
 		if err := wc.Close(); err != nil {
+			log.Fatal(err)
+		}
+	case "import-messages":
+		// TODO: support for mbox
+
+		importMessagesCmd.Parse(os.Args[2:])
+		username := importMessagesCmd.Arg(0)
+		archivePath := importMessagesCmd.Arg(1)
+		if username == "" || archivePath == "" {
+			log.Fatal("usage: hydroxide import-messages <username> <file>")
+		}
+
+		f, err := os.Open(archivePath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
+		var bridgePassword string
+		fmt.Printf("Bridge password: ")
+		if pass, err := gopass.GetPasswd(); err != nil {
+			log.Fatal(err)
+		} else {
+			bridgePassword = string(pass)
+		}
+
+		c, _, err := auth.NewManager(newClient).Auth(username, bridgePassword)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if err := imports.ImportMessage(c, f); err != nil {
 			log.Fatal(err)
 		}
 	case "smtp":
@@ -292,8 +324,9 @@ func main() {
 Commands:
 	auth <username>		Login to ProtonMail via hydroxide
 	carddav			Run hydroxide as a CardDAV server
-	export-secret-keys	Export keys
+	export-secret-keys <username> Export secret keys
 	imap			Run hydroxide as an IMAP server
+	import-messages <username> <file>	Import messages
 	serve			Run all servers
 	smtp			Run hydroxide as an SMTP server
 	status			View hydroxide status
