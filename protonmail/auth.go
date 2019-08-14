@@ -21,7 +21,12 @@ type authInfoReq struct {
 }
 
 type AuthInfo struct {
-	TwoFactor       int
+	TwoFactor     int
+	TwoFactorInfo struct {
+		Enabled int
+		U2F     interface{} // TODO
+		TOTP    int
+	} `json:"2FA"`
 	version         int
 	modulus         string
 	serverEphemeral string
