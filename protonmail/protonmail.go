@@ -11,6 +11,8 @@ import (
 	"strconv"
 
 	"golang.org/x/crypto/openpgp"
+
+	"log"
 )
 
 const Version = 3
@@ -74,6 +76,8 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 	if err != nil {
 		return nil, err
 	}
+
+	//log.Printf(">> %v %v\n", method, path)
 
 	req.Header.Set("X-Pm-Appversion", c.AppVersion)
 	req.Header.Set(headerAPIVersion, strconv.Itoa(Version))
@@ -155,6 +159,7 @@ func (c *Client) doJSON(req *http.Request, respData interface{}) error {
 
 	if maybeError, ok := respData.(maybeError); ok {
 		if err := maybeError.Err(); err != nil {
+			log.Printf("request failed: %v %v: %v", req.Method, req.URL.String(), err)
 			return err
 		}
 	}
