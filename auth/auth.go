@@ -25,6 +25,7 @@ type CachedAuth struct {
 	protonmail.Auth
 	LoginPassword   string
 	MailboxPassword string
+	KeySalts        map[string][]byte
 	// TODO: add padding
 }
 
@@ -131,7 +132,7 @@ func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string)
 	}
 	cachedAuth.Auth = *auth
 
-	return c.Unlock(auth, cachedAuth.MailboxPassword)
+	return c.Unlock(auth, cachedAuth.KeySalts, cachedAuth.MailboxPassword)
 }
 
 func ListUsernames() ([]string, error) {

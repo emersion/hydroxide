@@ -184,7 +184,12 @@ func main() {
 			}
 		}
 
-		_, err := c.Unlock(a, mailboxPassword)
+		keySalts, err := c.ListKeySalts()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		_, err = c.Unlock(a, keySalts, mailboxPassword)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -195,9 +200,10 @@ func main() {
 		}
 
 		err = auth.EncryptAndSave(&auth.CachedAuth{
-			*a,
-			loginPassword,
-			mailboxPassword,
+			Auth: *a,
+			LoginPassword: loginPassword,
+			MailboxPassword: mailboxPassword,
+			KeySalts: keySalts,
 		}, username, secretKey)
 		if err != nil {
 			log.Fatal(err)

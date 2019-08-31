@@ -141,7 +141,10 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 		return nil, err
 	}
 
-	return respData.auth(), nil
+	auth := respData.auth()
+	c.uid = auth.UID
+	c.accessToken = auth.AccessToken
+	return auth, nil
 }
 
 type authRefreshReq struct {
@@ -178,7 +181,7 @@ func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	return auth, nil
 }
 
-func (c *Client) listKeySalts() (map[string][]byte, error) {
+func (c *Client) ListKeySalts() (map[string][]byte, error) {
 	req, err := c.newRequest(http.MethodGet, "/keys/salts", nil)
 	if err != nil {
 		return nil, err
@@ -235,16 +238,11 @@ func unlockKey(e *openpgp.Entity, passphraseBytes []byte) error {
 	return nil
 }
 
-func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, error) {
+func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase string) (openpgp.EntityList, error) {
 	c.uid = auth.UID
 	c.accessToken = auth.AccessToken
 
 	addrs, err := c.ListAddresses()
-	if err != nil {
-		return nil, err
-	}
-
-	salts, err := c.listKeySalts()
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +257,7 @@ func (c *Client) Unlock(auth *Auth, passphrase string) (openpgp.EntityList, erro
 			}
 
 			passphraseBytes := []byte(passphrase)
-			if keySalt, ok := salts[key.ID]; ok && keySalt != nil {
+			if keySalt, ok := keySalts[key.ID]; ok && keySalt != nil {
 				passphraseBytes, err = computeKeyPassword(passphraseBytes, keySalt)
 				if err != nil {
 					return nil, err
