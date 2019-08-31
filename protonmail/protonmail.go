@@ -54,9 +54,6 @@ type Client struct {
 	RootURL    string
 	AppVersion string
 
-	ClientID     string
-	ClientSecret string
-
 	HTTPClient *http.Client
 	ReAuth     func() error
 

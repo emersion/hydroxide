@@ -12,8 +12,6 @@ import (
 )
 
 type authInfoReq struct {
-	ClientID     string
-	ClientSecret string
 	Username     string
 }
 
@@ -53,8 +51,6 @@ func (resp *AuthInfoResp) authInfo() *AuthInfo {
 
 func (c *Client) AuthInfo(username string) (*AuthInfo, error) {
 	reqData := &authInfoReq{
-		ClientID:     c.ClientID,
-		ClientSecret: c.ClientSecret,
 		Username:     username,
 	}
 
@@ -72,8 +68,6 @@ func (c *Client) AuthInfo(username string) (*AuthInfo, error) {
 }
 
 type authReq struct {
-	ClientID        string
-	ClientSecret    string
 	Username        string
 	SRPSession      string
 	ClientEphemeral string
@@ -126,8 +120,6 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 	}
 
 	reqData := &authReq{
-		ClientID:        c.ClientID,
-		ClientSecret:    c.ClientSecret,
 		Username:        username,
 		SRPSession:      info.srpSession,
 		ClientEphemeral: base64.StdEncoding.EncodeToString(proofs.clientEphemeral),
@@ -153,7 +145,6 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 }
 
 type authRefreshReq struct {
-	ClientID     string
 	UID          string `json:"Uid"`
 	RefreshToken string
 
@@ -161,14 +152,14 @@ type authRefreshReq struct {
 	ResponseType string
 	GrantType    string
 	RedirectURI  string
-	State        string
 }
 
 func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	reqData := &authRefreshReq{
-		ClientID:     c.ClientID,
 		UID:          expiredAuth.UID,
 		RefreshToken: expiredAuth.RefreshToken,
+		ResponseType: "token",
+		GrantType:    "refresh_token",
 	}
 
 	req, err := c.newJSONRequest(http.MethodPost, "/auth/refresh", reqData)
