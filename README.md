@@ -96,6 +96,26 @@ For now, it only supports unencrypted local connections.
 hydroxide imap
 ```
 
+### Specifying Listening Port/Hostname
+
+If desired, you can specify custom ports or a hostname for each service. Use the following flags:
+
+```
+-smtp-host example.com
+    Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+-imap-host example.com
+    Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
+-carddav-host example.com
+    Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+    
+-smtp-port 1234
+    SMTP port on which hydroxide listens, defaults to 1025
+-imap-port 2345
+    IMAP port on which hydroxide listens, defaults to 1143
+-carddav-port 3456
+    CardDAV port on which hydroxide listens, defaults to 8080
+```
+
 ## License
 
 MIT
