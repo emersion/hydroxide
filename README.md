@@ -3,8 +3,6 @@
 A third-party, open-source ProtonMail bridge. For power users only, designed to
 run on a server.
 
-hydroxide supports CardDAV, IMAP and SMTP.
-
 Rationale:
 
 * No GUI, only a CLI (so it runs in headless environments)
@@ -12,6 +10,16 @@ Rationale:
 * Fully open-source
 
 Feel free to join the IRC channel: ##emersion on irc.freenode.net.
+
+Features:
+
+* No X11 dependencies
+* CardDav
+* IMAP
+* SMTP
+* Specify custom hostname(s)
+* Specify custom port(s)
+* MIT Licensed
 
 ## How does it work?
 
@@ -94,26 +102,6 @@ For now, it only supports unencrypted local connections.
 
 ```shell
 hydroxide imap
-```
-
-### Specifying Listening Port/Hostname
-
-If desired, you can specify custom ports or a hostname for each service. Use the following flags:
-
-```
--smtp-host example.com
-    Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
--imap-host example.com
-    Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
--carddav-host example.com
-    Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
-    
--smtp-port 1234
-    SMTP port on which hydroxide listens, defaults to 1025
--imap-port 2345
-    IMAP port on which hydroxide listens, defaults to 1143
--carddav-port 3456
-    CardDAV port on which hydroxide listens, defaults to 8080
 ```
 
 ## License
