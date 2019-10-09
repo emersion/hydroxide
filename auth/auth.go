@@ -112,7 +112,9 @@ func EncryptAndSave(auth *CachedAuth, username string, secretKey *[32]byte) erro
 
 func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string) (openpgp.EntityList, error) {
 	auth, err := c.AuthRefresh(&cachedAuth.Auth)
-	if apiErr, ok := err.(*protonmail.APIError); ok && apiErr.Code == 10013 {
+	// error code 2000 'invalid input' happens since 09.2019
+	// ignoring it is the way to run hydroxide until refresh will be reverse engineered again
+	if apiErr, ok := err.(*protonmail.APIError); (ok && apiErr.Code == 10013) || (apiErr.Code == 2000) {
 		// Invalid refresh token, re-authenticate
 		authInfo, err := c.AuthInfo(username)
 		if err != nil {
