@@ -29,7 +29,7 @@ import (
 func newClient() *protonmail.Client {
 	return &protonmail.Client{
 		RootURL:      "https://mail.protonmail.com/api",
-		AppVersion:   "Web_3.16.2",
+		AppVersion:   "Web_3.16.6",
 	}
 }
 
