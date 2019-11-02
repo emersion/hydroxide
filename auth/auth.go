@@ -114,7 +114,7 @@ func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string)
 	auth, err := c.AuthRefresh(&cachedAuth.Auth)
 	// error code 2000 'invalid input' happens since 09.2019
 	// ignoring it is the way to run hydroxide until refresh will be reverse engineered again
-	if apiErr, ok := err.(*protonmail.APIError); (ok && apiErr.Code == 10013) || (apiErr.Code == 2000) {
+	if apiErr, ok := err.(*protonmail.APIError); (ok && apiErr.Code == 10013) || (apiErr.Code == 2000) || (apiErr.Code == 5003) {
 		// Invalid refresh token, re-authenticate
 		authInfo, err := c.AuthInfo(username)
 		if err != nil {
