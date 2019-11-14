@@ -109,7 +109,9 @@ func ImportMessage(c *protonmail.Client, r io.Reader) error {
 		return err
 	}
 
-	if _, err := importer.Commit(); err != nil {
+	if result, err := importer.Commit(); err != nil {
+		return err
+	} else if err := result.Err(); err != nil {
 		return err
 	}
 
