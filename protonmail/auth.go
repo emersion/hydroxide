@@ -163,6 +163,7 @@ func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 		RefreshToken: expiredAuth.RefreshToken,
 		ResponseType: "token",
 		GrantType:    "refresh_token",
+		RedirectURI:  "http://www.protonmail.ch",
 	}
 
 	req, err := c.newJSONRequest(http.MethodPost, "/auth/refresh", reqData)
