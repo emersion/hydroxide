@@ -44,7 +44,7 @@ type session struct {
 	addrs       []*protonmail.Address
 }
 
-func (s *session) Mail(from string) error {
+func (s *session) Mail(from string, options smtp.MailOptions) error {
 	return nil
 }
 
