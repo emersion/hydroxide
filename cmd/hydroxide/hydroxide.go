@@ -153,17 +153,26 @@ func main() {
 				log.Fatal(err)
 			}
 
-			var twoFactorCode string
-			if authInfo.TwoFactor == 1 {
-				scanner := bufio.NewScanner(os.Stdin)
-				fmt.Printf("2FA code: ")
-				scanner.Scan()
-				twoFactorCode = scanner.Text()
-			}
-
-			a, err = c.Auth(username, loginPassword, twoFactorCode, authInfo)
+			a, err = c.Auth(username, loginPassword, authInfo)
 			if err != nil {
 				log.Fatal(err)
+			}
+
+			if a.TwoFactor.Enabled == 1 {
+				if a.TwoFactor.TOTP != 1 {
+					log.Fatal("Only TOTP is supported as a 2FA method")
+				}
+
+				scanner := bufio.NewScanner(os.Stdin)
+				fmt.Printf("2FA TOTP code: ")
+				scanner.Scan()
+				code := scanner.Text()
+
+				scope, err := c.AuthTOTP(code)
+				if err != nil {
+					log.Fatal(err)
+				}
+				a.Scope = scope
 			}
 		}
 

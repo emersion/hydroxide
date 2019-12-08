@@ -157,6 +157,8 @@ func (c *Client) doJSON(req *http.Request, respData interface{}) error {
 		return err
 	}
 
+	//log.Printf("<< %v %v\n%#v", req.Method, req.URL.Path, respData)
+
 	if maybeError, ok := respData.(maybeError); ok {
 		if err := maybeError.Err(); err != nil {
 			log.Printf("request failed: %v %v: %v", req.Method, req.URL.String(), err)

@@ -16,12 +16,6 @@ type authInfoReq struct {
 }
 
 type AuthInfo struct {
-	TwoFactor     int
-	TwoFactorInfo struct {
-		Enabled int
-		U2F     interface{} // TODO
-		TOTP    int
-	} `json:"2FA"`
 	version         int
 	modulus         string
 	serverEphemeral string
@@ -72,7 +66,6 @@ type authReq struct {
 	SRPSession      string
 	ClientEphemeral string
 	ClientProof     string
-	TwoFactorCode   string
 }
 
 type PasswordMode int
@@ -88,8 +81,14 @@ type Auth struct {
 	UID          string
 	AccessToken  string
 	RefreshToken string
+	UserID       string
 	EventID      string
 	PasswordMode PasswordMode
+	TwoFactor struct {
+		Enabled int
+		U2F interface{} // TODO
+		TOTP int
+	} `json:"2FA"`
 }
 
 type authResp struct {
@@ -106,7 +105,7 @@ func (resp *authResp) auth() *Auth {
 	return auth
 }
 
-func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) (*Auth, error) {
+func (c *Client) Auth(username, password string, info *AuthInfo) (*Auth, error) {
 	if info == nil {
 		var err error
 		if info, err = c.AuthInfo(username); err != nil {
@@ -124,7 +123,6 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 		SRPSession:      info.srpSession,
 		ClientEphemeral: base64.StdEncoding.EncodeToString(proofs.clientEphemeral),
 		ClientProof:     base64.StdEncoding.EncodeToString(proofs.clientProof),
-		TwoFactorCode:   twoFactorCode,
 	}
 
 	req, err := c.newJSONRequest(http.MethodPost, "/auth", reqData)
@@ -145,6 +143,29 @@ func (c *Client) Auth(username, password, twoFactorCode string, info *AuthInfo) 
 	c.uid = auth.UID
 	c.accessToken = auth.AccessToken
 	return auth, nil
+}
+
+func (c *Client) AuthTOTP(code string) (scope string, err error) {
+	reqData := struct {
+		TwoFactorCode string
+	}{
+		TwoFactorCode: code,
+	}
+
+	req, err := c.newJSONRequest(http.MethodPost, "/auth/2fa", reqData)
+	if err != nil {
+		return "", err
+	}
+
+	respData := struct {
+		resp
+		Scope string
+	}{}
+	if err := c.doJSON(req, &respData); err != nil {
+		return "", err
+	}
+
+	return respData.Scope, nil
 }
 
 type authRefreshReq struct {
