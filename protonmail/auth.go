@@ -12,7 +12,7 @@ import (
 )
 
 type authInfoReq struct {
-	Username     string
+	Username string
 }
 
 type AuthInfo struct {
@@ -45,7 +45,7 @@ func (resp *AuthInfoResp) authInfo() *AuthInfo {
 
 func (c *Client) AuthInfo(username string) (*AuthInfo, error) {
 	reqData := &authInfoReq{
-		Username:     username,
+		Username: username,
 	}
 
 	req, err := c.newJSONRequest(http.MethodPost, "/auth/info", reqData)
@@ -84,10 +84,10 @@ type Auth struct {
 	UserID       string
 	EventID      string
 	PasswordMode PasswordMode
-	TwoFactor struct {
+	TwoFactor    struct {
 		Enabled int
-		U2F interface{} // TODO
-		TOTP int
+		U2F     interface{} // TODO
+		TOTP    int
 	} `json:"2FA"`
 }
 
@@ -212,7 +212,7 @@ func (c *Client) ListKeySalts() (map[string][]byte, error) {
 	var respData struct {
 		resp
 		KeySalts []struct {
-			ID string
+			ID      string
 			KeySalt string
 		}
 	}

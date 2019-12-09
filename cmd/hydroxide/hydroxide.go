@@ -28,8 +28,8 @@ import (
 
 func newClient() *protonmail.Client {
 	return &protonmail.Client{
-		RootURL:      "https://mail.protonmail.com/api",
-		AppVersion:   "Web_3.16.6",
+		RootURL:    "https://mail.protonmail.com/api",
+		AppVersion: "Web_3.16.6",
 	}
 }
 
@@ -209,10 +209,10 @@ func main() {
 		}
 
 		err = auth.EncryptAndSave(&auth.CachedAuth{
-			Auth: *a,
-			LoginPassword: loginPassword,
+			Auth:            *a,
+			LoginPassword:   loginPassword,
 			MailboxPassword: mailboxPassword,
-			KeySalts: keySalts,
+			KeySalts:        keySalts,
 		}, username, secretKey)
 		if err != nil {
 			log.Fatal(err)
