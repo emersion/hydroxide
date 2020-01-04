@@ -7,10 +7,10 @@ import (
 type User struct {
 	ID         string
 	Name       string
-	UsedSpace  int
+	UsedSpace  int64
 	Currency   string // e.g. EUR
 	Credit     int
-	MaxSpace   int
+	MaxSpace   int64
 	MaxUpload  int
 	Role       int // TODO
 	Private    int
