@@ -10,7 +10,7 @@ type User struct {
 	UsedSpace  int
 	Currency   string // e.g. EUR
 	Credit     int
-	MaxSpace   int
+	MaxSpace   int64
 	MaxUpload  int
 	Role       int // TODO
 	Private    int
