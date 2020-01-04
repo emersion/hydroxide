@@ -7,7 +7,7 @@ import (
 type User struct {
 	ID         string
 	Name       string
-	UsedSpace  int
+	UsedSpace  int64
 	Currency   string // e.g. EUR
 	Credit     int
 	MaxSpace   int64
