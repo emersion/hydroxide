@@ -30,10 +30,12 @@ var systemMailboxes = []struct {
 }
 
 type user struct {
+	backend     *backend
 	c           *protonmail.Client
 	u           *protonmail.User
 	privateKeys openpgp.EntityList
 	addrs       []*protonmail.Address
+	numClients  int
 
 	db             *database.User
 	eventsReceiver *events.Receiver
@@ -45,13 +47,40 @@ type user struct {
 	eventSent chan struct{}
 }
 
+func getUser(be *backend, username string, c *protonmail.Client, privateKeys openpgp.EntityList) (*user, error) {
+	if u, ok := be.users[username]; ok {
+		u.numClients++
+		return u, nil
+	} else {
+		pu, err := c.GetCurrentUser()
+		if err != nil {
+			return nil, err
+		}
+
+		addrs, err := c.ListAddresses()
+		if err != nil {
+			return nil, err
+		}
+
+		u, err := newUser(be, c, pu, privateKeys, addrs)
+		if err != nil {
+			return nil, err
+		}
+
+		be.users[username] = u
+		return u, nil
+	}
+}
+
 func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList, addrs []*protonmail.Address) (*user, error) {
 	uu := &user{
+		backend:     be,
 		c:           c,
 		u:           u,
 		privateKeys: privateKeys,
 		addrs:       addrs,
 		eventSent:   make(chan struct{}),
+		numClients:  1,
 	}
 
 	db, err := database.Open(u.Name + ".db")
@@ -70,6 +99,7 @@ func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys 
 	go uu.receiveEvents(be.updates, ch)
 	uu.eventsReceiver = be.eventsManager.Register(c, u.Name, ch, done)
 
+	log.Printf("User %q logged in via IMAP", u.Name)
 	return uu, nil
 }
 
@@ -164,12 +194,23 @@ func (u *user) RenameMailbox(existingName, newName string) error {
 }
 
 func (u *user) Logout() error {
+	if u.numClients <= 0 {
+		panic("unreachable")
+	}
+	u.numClients--
+	if u.numClients > 0 {
+		return nil
+	}
+
+	delete(u.backend.users, u.u.Name)
+
 	close(u.done)
 
 	if err := u.db.Close(); err != nil {
 		return err
 	}
 
+	log.Printf("User %q logged out via IMAP", u.u.Name)
 	u.c = nil
 	u.u = nil
 	u.privateKeys = nil

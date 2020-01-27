@@ -16,6 +16,7 @@ type backend struct {
 	sessions      *auth.Manager
 	eventsManager *events.Manager
 	updates       chan imapbackend.Update
+	users         map[string]*user
 }
 
 func (be *backend) Login(info *imap.ConnInfo, username, password string) (imapbackend.User, error) {
@@ -24,17 +25,7 @@ func (be *backend) Login(info *imap.ConnInfo, username, password string) (imapba
 		return nil, err
 	}
 
-	u, err := c.GetCurrentUser()
-	if err != nil {
-		return nil, err
-	}
-
-	addrs, err := c.ListAddresses()
-	if err != nil {
-		return nil, err
-	}
-
-	return newUser(be, c, u, privateKeys, addrs)
+	return getUser(be, username, c, privateKeys)
 }
 
 func (be *backend) Updates() <-chan imapbackend.Update {
@@ -42,5 +33,10 @@ func (be *backend) Updates() <-chan imapbackend.Update {
 }
 
 func New(sessions *auth.Manager, eventsManager *events.Manager) imapbackend.Backend {
-	return &backend{sessions, eventsManager, make(chan imapbackend.Update, 50)}
+	return &backend{
+		sessions:      sessions,
+		eventsManager: eventsManager,
+		updates:       make(chan imapbackend.Update, 50),
+		users:         make(map[string]*user),
+	}
 }
