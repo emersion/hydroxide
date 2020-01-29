@@ -31,6 +31,22 @@ type mailbox struct {
 	deleted       map[string]struct{}
 }
 
+func newMailbox(name string, label string, flags []string, u *user) (*mailbox, error) {
+	mboxDB, err := u.db.Mailbox(label)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mailbox{
+		name:    name,
+		label:   label,
+		flags:   flags,
+		u:       u,
+		db:      mboxDB,
+		deleted: make(map[string]struct{}),
+	}, nil
+}
+
 func (mbox *mailbox) Name() string {
 	return mbox.name
 }

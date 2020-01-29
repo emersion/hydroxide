@@ -110,18 +110,29 @@ func (u *user) initMailboxes() error {
 	u.mailboxes = make(map[string]*mailbox)
 
 	for _, data := range systemMailboxes {
-		mboxDB, err := u.db.Mailbox(data.label)
+		var err error
+		u.mailboxes[data.label], err = newMailbox(data.name, data.label, data.flags, u)
 		if err != nil {
 			return err
 		}
+	}
 
-		u.mailboxes[data.label] = &mailbox{
-			name:    data.name,
-			label:   data.label,
-			flags:   data.flags,
-			u:       u,
-			db:      mboxDB,
-			deleted: make(map[string]struct{}),
+	labels, err := u.c.ListLabels()
+	if err != nil {
+		return err
+	}
+
+	for _, label := range labels {
+		if label.Exclusive != 1 {
+			continue
+		}
+		if _, ok := u.mailboxes[label.ID]; ok {
+			continue
+		}
+
+		u.mailboxes[label.ID], err = newMailbox(label.Name, label.ID, nil, u)
+		if err != nil {
+			return err
 		}
 	}
 
