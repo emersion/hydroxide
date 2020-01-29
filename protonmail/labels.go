@@ -1,5 +1,9 @@
 package protonmail
 
+import (
+	"net/http"
+)
+
 const (
 	LabelInbox    = "0"
 	LabelAllDraft = "1"
@@ -12,3 +16,38 @@ const (
 	LabelDraft    = "8"
 	LabelStarred  = "10"
 )
+
+type LabelType int
+
+const (
+	LabelMessage LabelType = 1
+	LabelContact LabelType = 2
+)
+
+type Label struct {
+	ID        string
+	Name      string
+	Color     string
+	Display   int
+	Type      LabelType
+	Exclusive int
+	Notify    int
+	Order     int
+}
+
+func (c *Client) ListLabels() ([]*Label, error) {
+	req, err := c.newRequest(http.MethodGet, "/labels", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Labels []*Label
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Labels, nil
+}
