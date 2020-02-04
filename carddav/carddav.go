@@ -3,11 +3,13 @@ package carddav
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
+	"path"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,9 +19,8 @@ import (
 	"golang.org/x/crypto/openpgp"
 )
 
-type contextKey string
-
-const ClientContextKey = contextKey("client")
+// TODO: use a HTTP error
+var errNotFound = errors.New("carddav: not found")
 
 var (
 	cleartextCardProps = []string{vcard.FieldVersion, vcard.FieldProductID, "X-PM-LABEL", "X-PM-GROUP"}
@@ -80,52 +81,25 @@ func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.Contac
 	return &contactImport, nil
 }
 
-type addressFileInfo struct {
-	contact *protonmail.Contact
+func parseAddressObjectPath(p string) (string, error) {
+	dirname, filename := path.Split(p)
+	ext := path.Ext(filename)
+	if dirname != "/" || ext != ".vcf" {
+		return "", errNotFound
+	}
+	return strings.TrimSuffix(filename, ext), nil
 }
 
-func (fi *addressFileInfo) Name() string {
-	return fi.contact.ID
+func formatAddressObjectPath(id string) string {
+	return "/" + id + ".vcf"
 }
 
-func (fi *addressFileInfo) Size() int64 {
-	return int64(fi.contact.Size)
-}
+func (b *backend) toAddressObject(contact *protonmail.Contact, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+	// TODO: handle req
 
-func (fi *addressFileInfo) Mode() os.FileMode {
-	return os.ModePerm
-}
-
-func (fi *addressFileInfo) ModTime() time.Time {
-	return time.Unix(fi.contact.ModifyTime, 0)
-}
-
-func (fi *addressFileInfo) IsDir() bool {
-	return false
-}
-
-func (fi *addressFileInfo) Sys() interface{} {
-	return nil
-}
-
-type addressObject struct {
-	ab      *addressBook
-	contact *protonmail.Contact
-}
-
-func (ao *addressObject) ID() string {
-	return ao.contact.ID
-}
-
-func (ao *addressObject) Stat() (os.FileInfo, error) {
-	return &addressFileInfo{ao.contact}, nil
-}
-
-func (ao *addressObject) Card() (vcard.Card, error) {
 	card := make(vcard.Card)
-
-	for _, c := range ao.contact.Cards {
-		md, err := c.Read(ao.ab.privateKeys)
+	for _, c := range contact.Cards {
+		md, err := c.Read(b.privateKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -149,80 +123,93 @@ func (ao *addressObject) Card() (vcard.Card, error) {
 		}
 	}
 
-	return card, nil
+	return &carddav.AddressObject{
+		Path:    formatAddressObjectPath(contact.ID),
+		ModTime: time.Unix(contact.ModifyTime, 0),
+		// TODO: stronger ETag
+		ETag: fmt.Sprintf("%x%x", contact.ModifyTime, contact.Size),
+		Card: card,
+	}, nil
 }
 
-func (ao *addressObject) SetCard(card vcard.Card) error {
-	contactImport, err := formatCard(card, ao.ab.privateKeys[0])
-	if err != nil {
-		return err
-	}
-
-	contact, err := ao.ab.c.UpdateContact(ao.contact.ID, contactImport)
-	if err != nil {
-		return err
-	}
-	contact.Cards = contactImport.Cards // Not returned by the server
-
-	ao.contact = contact
-	return nil
-}
-
-func (ao *addressObject) Remove() error {
-	resps, err := ao.ab.c.DeleteContacts([]string{ao.contact.ID})
-	if err != nil {
-		return err
-	}
-	if len(resps) != 1 {
-		return errors.New("hydroxide/carddav: expected exactly one response when deleting contact")
-	}
-	resp := resps[0]
-	return resp.Err()
-}
-
-type addressBook struct {
+type backend struct {
 	c           *protonmail.Client
-	cache       map[string]*addressObject
+	cache       map[string]*protonmail.Contact
 	locker      sync.Mutex
 	total       int
 	privateKeys openpgp.EntityList
 }
 
-func (ab *addressBook) Info() (*carddav.AddressBookInfo, error) {
-	return &carddav.AddressBookInfo{
+func (b *backend) AddressBook() (*carddav.AddressBook, error) {
+	return &carddav.AddressBook{
+		Path:            "/",
 		Name:            "ProtonMail",
 		Description:     "ProtonMail contacts",
 		MaxResourceSize: 100 * 1024,
 	}, nil
 }
 
-func (ab *addressBook) cacheComplete() bool {
-	ab.locker.Lock()
-	defer ab.locker.Unlock()
-	return ab.total >= 0 && len(ab.cache) == ab.total
+func (b *backend) cacheComplete() bool {
+	b.locker.Lock()
+	defer b.locker.Unlock()
+	return b.total >= 0 && len(b.cache) == b.total
 }
 
-func (ab *addressBook) addressObject(id string) (*addressObject, bool) {
-	ab.locker.Lock()
-	defer ab.locker.Unlock()
-	ao, ok := ab.cache[id]
-	return ao, ok
+func (b *backend) getCache(id string) (*protonmail.Contact, bool) {
+	b.locker.Lock()
+	contact, ok := b.cache[id]
+	b.locker.Unlock()
+	return contact, ok
 }
 
-func (ab *addressBook) cacheAddressObject(ao *addressObject) {
-	ab.locker.Lock()
-	defer ab.locker.Unlock()
-	ab.cache[ao.contact.ID] = ao
+func (b *backend) putCache(contact *protonmail.Contact) {
+	b.locker.Lock()
+	b.cache[contact.ID] = contact
+	b.locker.Unlock()
 }
 
-func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
-	if ab.cacheComplete() {
-		ab.locker.Lock()
-		defer ab.locker.Unlock()
+func (b *backend) deleteCache(id string) {
+	b.locker.Lock()
+	delete(b.cache, id)
+	b.locker.Unlock()
+}
 
-		aos := make([]carddav.AddressObject, 0, len(ab.cache))
-		for _, ao := range ab.cache {
-			aos = append(aos, ao)
+func (b *backend) GetAddressObject(path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+	id, err := parseAddressObjectPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	contact, ok := b.getCache(id)
+	if !ok {
+		if b.cacheComplete() {
+			return nil, errNotFound
+		}
+
+		contact, err = b.c.GetContact(id)
+		if apiErr, ok := err.(*protonmail.APIError); ok && apiErr.Code == 13051 {
+			return nil, errNotFound
+		} else if err != nil {
+			return nil, err
+		}
+		b.putCache(contact)
+	}
+
+	return b.toAddressObject(contact, req)
+}
+
+func (b *backend) ListAddressObjects(req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
+	if b.cacheComplete() {
+		b.locker.Lock()
+		defer b.locker.Unlock()
+
+		aos := make([]carddav.AddressObject, 0, len(b.cache))
+		for _, contact := range b.cache {
+			ao, err := b.toAddressObject(contact, req)
+			if err != nil {
+				return nil, err
+			}
+			aos = append(aos, *ao)
 		}
 
 		return aos, nil
@@ -230,48 +217,41 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 
 	// Get a list of all contacts
 	// TODO: paging support
-	total, contacts, err := ab.c.ListContacts(0, 0)
+	total, contacts, err := b.c.ListContacts(0, 0)
 	if err != nil {
 		return nil, err
 	}
-	ab.locker.Lock()
-	ab.total = total
-	ab.locker.Unlock()
+	b.locker.Lock()
+	b.total = total
+	b.locker.Unlock()
 
+	m := make(map[string]*protonmail.Contact, total)
 	for _, contact := range contacts {
-		if _, ok := ab.addressObject(contact.ID); !ok {
-			ab.cacheAddressObject(&addressObject{
-				ab:      ab,
-				contact: contact,
-			})
-		}
+		m[contact.ID] = contact
 	}
 
 	// Get all contacts cards
-	var aos []carddav.AddressObject
+	aos := make([]carddav.AddressObject, 0, total)
 	page := 0
 	for {
-		_, contacts, err := ab.c.ListContactsExport(page, 0)
+		_, contacts, err := b.c.ListContactsExport(page, 0)
 		if err != nil {
 			return nil, err
 		}
 
-		if aos == nil {
-			aos = make([]carddav.AddressObject, 0, total)
-		}
-
-		for _, contact := range contacts {
-			ao, ok := ab.addressObject(contact.ID)
+		for _, contactExport := range contacts {
+			contact, ok := m[contactExport.ID]
 			if !ok {
-				ao = &addressObject{
-					ab:      ab,
-					contact: &protonmail.Contact{ID: contact.ID},
-				}
-				ab.cacheAddressObject(ao)
+				continue
 			}
+			contact.Cards = contactExport.Cards
+			b.putCache(contact)
 
-			ao.contact.Cards = contact.Cards
-			aos = append(aos, ao)
+			ao, err := b.toAddressObject(contact, req)
+			if err != nil {
+				return nil, err
+			}
+			aos = append(aos, *ao)
 		}
 
 		if len(aos) >= total || len(contacts) == 0 {
@@ -283,79 +263,93 @@ func (ab *addressBook) ListAddressObjects() ([]carddav.AddressObject, error) {
 	return aos, nil
 }
 
-func (ab *addressBook) GetAddressObject(id string) (carddav.AddressObject, error) {
-	if ao, ok := ab.addressObject(id); ok {
-		return ao, nil
-	} else if ab.cacheComplete() {
-		return nil, carddav.ErrNotFound
-	}
-
-	contact, err := ab.c.GetContact(id)
-	if err != nil {
-		// TODO: return carddav.ErrNotFound if appropriate
-		return nil, err
-	}
-
-	ao := &addressObject{
-		ab:      ab,
-		contact: contact,
-	}
-	ab.cacheAddressObject(ao)
-	return ao, nil
+func (b *backend) QueryAddressObjects(query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
+	panic("TODO")
 }
 
-func (ab *addressBook) CreateAddressObject(card vcard.Card) (carddav.AddressObject, error) {
-	contactImport, err := formatCard(card, ab.privateKeys[0])
+func (b *backend) PutAddressObject(path string, card vcard.Card) (loc string, err error) {
+	id, err := parseAddressObjectPath(path)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	resps, err := ab.c.CreateContacts([]*protonmail.ContactImport{contactImport})
+	contactImport, err := formatCard(card, b.privateKeys[0])
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	if len(resps) != 1 {
-		return nil, errors.New("hydroxide/carddav: expected exactly one response when creating contact")
+
+	var contact *protonmail.Contact
+
+	var req carddav.AddressDataRequest
+	if _, getErr := b.GetAddressObject(path, &req); getErr == nil {
+		contact, err = b.c.UpdateContact(id, contactImport)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		resps, err := b.c.CreateContacts([]*protonmail.ContactImport{contactImport})
+		if err != nil {
+			return "", err
+		}
+		if len(resps) != 1 {
+			return "", errors.New("hydroxide/carddav: expected exactly one response when creating contact")
+		}
+		resp := resps[0]
+		if err := resp.Err(); err != nil {
+			return "", err
+		}
+		contact = resp.Response.Contact
 	}
-	resp := resps[0]
-	if err := resp.Err(); err != nil {
-		return nil, err
-	}
-	contact := resp.Response.Contact
 	contact.Cards = contactImport.Cards // Not returned by the server
 
-	ao := &addressObject{
-		ab:      ab,
-		contact: contact,
-	}
-	ab.cacheAddressObject(ao)
-	return ao, nil
+	// TODO: increment b.total if necessary
+	b.putCache(contact)
+	return formatAddressObjectPath(contact.ID), nil
 }
 
-func (ab *addressBook) receiveEvents(events <-chan *protonmail.Event) {
+func (b *backend) DeleteAddressObject(path string) error {
+	id, err := parseAddressObjectPath(path)
+	if err != nil {
+		return err
+	}
+	resps, err := b.c.DeleteContacts([]string{id})
+	if err != nil {
+		return err
+	}
+	if len(resps) != 1 {
+		return errors.New("hydroxide/carddav: expected exactly one response when deleting contact")
+	}
+	resp := resps[0]
+	// TODO: decrement b.total if necessary
+	b.deleteCache(id)
+	return resp.Err()
+}
+
+func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
 	for event := range events {
-		ab.locker.Lock()
+		b.locker.Lock()
 		if event.Refresh&protonmail.EventRefreshContacts != 0 {
-			ab.cache = make(map[string]*addressObject)
-			ab.total = -1
+			b.cache = make(map[string]*protonmail.Contact)
+			b.total = -1
 		} else if len(event.Contacts) > 0 {
 			for _, eventContact := range event.Contacts {
 				switch eventContact.Action {
 				case protonmail.EventCreate:
-					ab.total++
+					if b.total >= 0 {
+						b.total++
+					}
 					fallthrough
 				case protonmail.EventUpdate:
-					ab.cache[eventContact.ID] = &addressObject{
-						ab:      ab,
-						contact: eventContact.Contact,
-					}
+					b.cache[eventContact.ID] = eventContact.Contact
 				case protonmail.EventDelete:
-					delete(ab.cache, eventContact.ID)
-					ab.total--
+					delete(b.cache, eventContact.ID)
+					if b.total >= 0 {
+						b.total--
+					}
 				}
 			}
 		}
-		ab.locker.Unlock()
+		b.locker.Unlock()
 	}
 }
 
@@ -364,16 +358,16 @@ func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-c
 		panic("hydroxide/carddav: no private key available")
 	}
 
-	ab := &addressBook{
+	b := &backend{
 		c:           c,
-		cache:       make(map[string]*addressObject),
+		cache:       make(map[string]*protonmail.Contact),
 		total:       -1,
 		privateKeys: privateKeys,
 	}
 
 	if events != nil {
-		go ab.receiveEvents(events)
+		go b.receiveEvents(events)
 	}
 
-	return carddav.NewHandler(ab)
+	return &carddav.Handler{b}
 }
