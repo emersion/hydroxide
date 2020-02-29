@@ -95,26 +95,6 @@ func hasLabel(msg *protonmail.Message, labelID string) bool {
 	return false
 }
 
-// Doesn't support imap.DeletedFlag.
-func fetchFlags(msg *protonmail.Message) []string {
-	var flags []string
-	if msg.Unread != 1 {
-		flags = append(flags, imap.SeenFlag)
-	}
-	if msg.IsReplied != 0 || msg.IsRepliedAll != 0 {
-		flags = append(flags, imap.AnsweredFlag)
-	}
-	for _, label := range msg.LabelIDs {
-		switch label {
-		case protonmail.LabelStarred:
-			flags = append(flags, imap.FlaggedFlag)
-		case protonmail.LabelDraft:
-			flags = append(flags, imap.DraftFlag)
-		}
-	}
-	return flags
-}
-
 func splitMIMEType(t string) (string, string) {
 	parts := strings.SplitN(t, "/", 2)
 	if len(parts) < 2 {

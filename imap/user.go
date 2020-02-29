@@ -2,6 +2,7 @@ package imap
 
 import (
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/emersion/go-imap"
@@ -29,6 +30,11 @@ var systemMailboxes = []struct {
 	{"Trash", protonmail.LabelTrash, []string{specialuse.Trash}},
 }
 
+var systemFlags = map[string]string{
+	imap.FlaggedFlag: protonmail.LabelStarred,
+	imap.DraftFlag:   protonmail.LabelDraft,
+}
+
 type user struct {
 	backend     *backend
 	c           *protonmail.Client
@@ -41,7 +47,8 @@ type user struct {
 	eventsReceiver *events.Receiver
 
 	locker    sync.Mutex
-	mailboxes map[string]*mailbox
+	mailboxes map[string]*mailbox // indexed by label ID
+	flags     map[string]string   // indexed by label ID
 
 	done      chan<- struct{}
 	eventSent chan struct{}
@@ -103,12 +110,38 @@ func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys 
 	return uu, nil
 }
 
+func labelNameToFlag(s string) string {
+	var sb strings.Builder
+	var lastValid bool
+	for _, r := range s {
+		// See atom-specials in RFC 3501
+		var valid bool
+		switch r {
+		case '(', ')', '{':
+		case ' ', '\t': // SP
+		case '%', '*': // list-wildcards
+		case '"', '\\': // quoted-specials
+		case ']': // resp-specials
+		default:
+			valid = r <= '~' && r > 31
+		}
+		if !valid {
+			if !lastValid {
+				continue
+			}
+			r = '_'
+		}
+		sb.WriteRune(r)
+		lastValid = valid
+	}
+	return sb.String()
+}
+
 func (u *user) initMailboxes() error {
 	u.locker.Lock()
 	defer u.locker.Unlock()
 
 	u.mailboxes = make(map[string]*mailbox)
-
 	for _, data := range systemMailboxes {
 		var err error
 		u.mailboxes[data.label], err = newMailbox(data.name, data.label, data.attrs, u)
@@ -117,22 +150,32 @@ func (u *user) initMailboxes() error {
 		}
 	}
 
+	u.flags = make(map[string]string)
+	for flag, label := range systemFlags {
+		u.flags[flag] = label
+	}
+
 	labels, err := u.c.ListLabels()
 	if err != nil {
 		return err
 	}
 
 	for _, label := range labels {
-		if label.Exclusive != 1 {
-			continue
-		}
-		if _, ok := u.mailboxes[label.ID]; ok {
-			continue
-		}
+		if label.Exclusive == 1 {
+			if _, ok := u.mailboxes[label.ID]; ok {
+				continue
+			}
 
-		u.mailboxes[label.ID], err = newMailbox(label.Name, label.ID, nil, u)
-		if err != nil {
-			return err
+			u.mailboxes[label.ID], err = newMailbox(label.Name, label.ID, nil, u)
+			if err != nil {
+				return err
+			}
+		} else {
+			if _, ok := u.flags[label.ID]; ok {
+				continue
+			}
+
+			u.flags[label.ID] = labelNameToFlag(label.Name)
 		}
 	}
 
@@ -325,7 +368,7 @@ func (u *user) receiveEvents(updates chan<- imapbackend.Update, events <-chan *p
 							update := new(imapbackend.MessageUpdate)
 							update.Update = imapbackend.NewUpdate(u.u.Name, mbox.name)
 							update.Message = imap.NewMessage(seqNum, []imap.FetchItem{imap.FetchFlags})
-							update.Message.Flags = fetchFlags(msg)
+							update.Message.Flags = mbox.fetchFlags(msg)
 							eventUpdates = append(eventUpdates, update)
 						}
 					}

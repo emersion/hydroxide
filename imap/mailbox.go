@@ -163,9 +163,20 @@ func (mbox *mailbox) reset() error {
 }
 
 func (mbox *mailbox) fetchFlags(msg *protonmail.Message) []string {
-	flags := fetchFlags(msg)
+	var flags []string
+	if msg.Unread != 1 {
+		flags = append(flags, imap.SeenFlag)
+	}
+	if msg.IsReplied != 0 || msg.IsRepliedAll != 0 {
+		flags = append(flags, imap.AnsweredFlag)
+	}
 	if _, ok := mbox.deleted[msg.ID]; ok {
 		flags = append(flags, imap.DeletedFlag)
+	}
+	for _, label := range msg.LabelIDs {
+		if flag, ok := mbox.u.flags[label]; ok {
+			flags = append(flags, flag)
+		}
 	}
 	return flags
 }
