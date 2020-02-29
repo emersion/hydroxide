@@ -39,6 +39,7 @@ var systemFlags = []struct {
 }
 
 type user struct {
+	username    string
 	backend     *backend
 	c           *protonmail.Client
 	u           *protonmail.User
@@ -65,17 +66,7 @@ func getUser(be *backend, username string, c *protonmail.Client, privateKeys ope
 		u.Unlock()
 		return u, nil
 	} else {
-		pu, err := c.GetCurrentUser()
-		if err != nil {
-			return nil, err
-		}
-
-		addrs, err := c.ListAddresses()
-		if err != nil {
-			return nil, err
-		}
-
-		u, err := newUser(be, c, pu, privateKeys, addrs)
+		u, err := newUser(be, username, c, privateKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -85,8 +76,19 @@ func getUser(be *backend, username string, c *protonmail.Client, privateKeys ope
 	}
 }
 
-func newUser(be *backend, c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList, addrs []*protonmail.Address) (*user, error) {
+func newUser(be *backend, username string, c *protonmail.Client, privateKeys openpgp.EntityList) (*user, error) {
+	u, err := c.GetCurrentUser()
+	if err != nil {
+		return nil, err
+	}
+
+	addrs, err := c.ListAddresses()
+	if err != nil {
+		return nil, err
+	}
+
 	uu := &user{
+		username:    username,
 		backend:     be,
 		c:           c,
 		u:           u,
@@ -277,7 +279,7 @@ func (u *user) Logout() error {
 		return nil
 	}
 
-	delete(u.backend.users, u.u.Name)
+	delete(u.backend.users, u.username)
 
 	close(u.done)
 
