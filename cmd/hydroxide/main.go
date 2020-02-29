@@ -106,6 +106,33 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 	return s.ListenAndServe()
 }
 
+const usage = `usage: hydroxide <command> <flags>
+Commands:
+	auth <username>		Login to ProtonMail via hydroxide
+	carddav			Run hydroxide as a CardDAV server
+	export-secret-keys <username> Export secret keys
+	imap			Run hydroxide as an IMAP server
+	import-messages <username> <file>	Import messages
+	serve			Run all servers
+	smtp			Run hydroxide as an SMTP server
+	status			View hydroxide status
+
+Flags:
+	-debug
+		Enable debug logs
+	-smtp-host example.com
+		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+	-imap-host example.com
+		Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
+	-carddav-host example.com
+		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+	-smtp-port example.com
+		SMTP port on which hydroxide listens, defaults to 1025
+	-imap-port example.com
+		IMAP port on which hydroxide listens, defaults to 1143
+	-carddav-port example.com
+		CardDAV port on which hydroxide listens, defaults to 8080`
+
 func main() {
 	debug := flag.Bool("debug", false, "Enable debug logs")
 
@@ -339,32 +366,7 @@ func main() {
 		}()
 		log.Fatal(<-done)
 	default:
-		log.Println(`usage: hydroxide <command> <flags>
-Commands:
-	auth <username>		Login to ProtonMail via hydroxide
-	carddav			Run hydroxide as a CardDAV server
-	export-secret-keys <username> Export secret keys
-	imap			Run hydroxide as an IMAP server
-	import-messages <username> <file>	Import messages
-	serve			Run all servers
-	smtp			Run hydroxide as an SMTP server
-	status			View hydroxide status
-
-Flags:
-	-debug
-		Enable debug logs
-	-smtp-host example.com
-		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
-	-imap-host example.com
-		Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
-	-carddav-host example.com
-		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
-	-smtp-port example.com
-		SMTP port on which hydroxide listens, defaults to 1025
-	-imap-port example.com
-		IMAP port on which hydroxide listens, defaults to 1143
-	-carddav-port example.com
-		CardDAV port on which hydroxide listens, defaults to 8080`)
+		log.Println(usage)
 		if cmd != "help" {
 			log.Fatal("Unrecognized command")
 		}
