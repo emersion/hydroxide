@@ -60,6 +60,11 @@ type user struct {
 }
 
 func getUser(be *backend, username string, c *protonmail.Client, privateKeys openpgp.EntityList) (*user, error) {
+	// TODO: logging a user in may take some time, find a way not to lock all
+	// other logins during this time
+	be.Lock()
+	defer be.Unlock()
+
 	if u, ok := be.users[username]; ok {
 		u.Lock()
 		u.numClients++
@@ -268,6 +273,8 @@ func (u *user) RenameMailbox(existingName, newName string) error {
 }
 
 func (u *user) Logout() error {
+	u.backend.Lock()
+	defer u.backend.Unlock()
 	u.Lock()
 	defer u.Unlock()
 

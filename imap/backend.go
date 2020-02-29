@@ -2,6 +2,7 @@ package imap
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/emersion/go-imap"
 	imapbackend "github.com/emersion/go-imap/backend"
@@ -16,7 +17,10 @@ type backend struct {
 	sessions      *auth.Manager
 	eventsManager *events.Manager
 	updates       chan imapbackend.Update
-	users         map[string]*user
+
+	sync.Mutex // protects everything below
+
+	users map[string]*user
 }
 
 func (be *backend) Login(info *imap.ConnInfo, username, password string) (imapbackend.User, error) {
