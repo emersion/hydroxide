@@ -30,9 +30,12 @@ var systemMailboxes = []struct {
 	{"Trash", protonmail.LabelTrash, []string{specialuse.Trash}},
 }
 
-var systemFlags = map[string]string{
-	imap.FlaggedFlag: protonmail.LabelStarred,
-	imap.DraftFlag:   protonmail.LabelDraft,
+var systemFlags = []struct {
+	name  string
+	label string
+}{
+	{imap.FlaggedFlag, protonmail.LabelStarred},
+	{imap.DraftFlag, protonmail.LabelDraft},
 }
 
 type user struct {
@@ -151,8 +154,8 @@ func (u *user) initMailboxes() error {
 	}
 
 	u.flags = make(map[string]string)
-	for flag, label := range systemFlags {
-		u.flags[flag] = label
+	for _, data := range systemFlags {
+		u.flags[data.label] = data.name
 	}
 
 	labels, err := u.c.ListLabels()
@@ -233,6 +236,18 @@ func (u *user) GetMailbox(name string) (imapbackend.Mailbox, error) {
 		return nil, imapbackend.ErrNoSuchMailbox
 	}
 	return mbox, nil
+}
+
+func (u *user) getFlag(name string) string {
+	u.locker.Lock()
+	defer u.locker.Unlock()
+
+	for label, flag := range u.flags {
+		if flag == name {
+			return label
+		}
+	}
+	return ""
 }
 
 func (u *user) CreateMailbox(name string) error {

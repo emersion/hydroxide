@@ -60,9 +60,18 @@ func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
 }
 
 func (mbox *mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error) {
+	mbox.u.locker.Lock()
+	flags := []string{imap.SeenFlag, imap.DeletedFlag}
+	permFlags := []string{imap.SeenFlag}
+	for _, flag := range mbox.u.flags {
+		flags = append(flags, flag)
+		permFlags = append(permFlags, flag)
+	}
+	mbox.u.locker.Unlock()
+
 	status := imap.NewMailboxStatus(mbox.name, items)
-	status.Flags = []string{imap.SeenFlag, imap.FlaggedFlag, imap.DeletedFlag}
-	status.PermanentFlags = []string{imap.SeenFlag, imap.FlaggedFlag}
+	status.Flags = flags
+	status.PermanentFlags = permFlags
 	status.UnseenSeqNum = 0 // TODO
 
 	for _, name := range items {
@@ -446,13 +455,6 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 			case imap.RemoveFlags:
 				err = mbox.u.c.MarkMessagesUnread(apiIDs)
 			}
-		case imap.FlaggedFlag:
-			switch op {
-			case imap.SetFlags, imap.AddFlags:
-				err = mbox.u.c.LabelMessages(protonmail.LabelStarred, apiIDs)
-			case imap.RemoveFlags:
-				err = mbox.u.c.UnlabelMessages(protonmail.LabelStarred, apiIDs)
-			}
 		case imap.DeletedFlag:
 			// TODO: send updates
 			switch op {
@@ -464,6 +466,20 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 				for _, apiID := range apiIDs {
 					delete(mbox.deleted, apiID)
 				}
+			}
+		case imap.DraftFlag:
+			// No-op
+		default:
+			label := mbox.u.getFlag(flag)
+			if label == "" {
+				break
+			}
+
+			switch op {
+			case imap.SetFlags, imap.AddFlags:
+				err = mbox.u.c.LabelMessages(label, apiIDs)
+			case imap.RemoveFlags:
+				err = mbox.u.c.UnlabelMessages(label, apiIDs)
 			}
 		}
 		if err != nil {
