@@ -19,7 +19,7 @@ const delimiter = "/"
 type mailbox struct {
 	name  string
 	label string
-	flags []string
+	attrs []string
 
 	u  *user
 	db *database.Mailbox
@@ -31,7 +31,7 @@ type mailbox struct {
 	deleted       map[string]struct{}
 }
 
-func newMailbox(name string, label string, flags []string, u *user) (*mailbox, error) {
+func newMailbox(name string, label string, attrs []string, u *user) (*mailbox, error) {
 	mboxDB, err := u.db.Mailbox(label)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func newMailbox(name string, label string, flags []string, u *user) (*mailbox, e
 	return &mailbox{
 		name:    name,
 		label:   label,
-		flags:   flags,
+		attrs:   attrs,
 		u:       u,
 		db:      mboxDB,
 		deleted: make(map[string]struct{}),
@@ -53,7 +53,7 @@ func (mbox *mailbox) Name() string {
 
 func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
 	return &imap.MailboxInfo{
-		Attributes: append(mbox.flags, imap.NoInferiorsAttr),
+		Attributes: append([]string{imap.NoInferiorsAttr}, mbox.attrs...),
 		Delimiter:  delimiter,
 		Name:       mbox.name,
 	}, nil
@@ -61,8 +61,8 @@ func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
 
 func (mbox *mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error) {
 	status := imap.NewMailboxStatus(mbox.name, items)
-	status.Flags = mbox.flags
-	status.PermanentFlags = []string{imap.SeenFlag, imap.FlaggedFlag, imap.DeletedFlag}
+	status.Flags = []string{imap.SeenFlag, imap.FlaggedFlag, imap.DeletedFlag}
+	status.PermanentFlags = []string{imap.SeenFlag, imap.FlaggedFlag}
 	status.UnseenSeqNum = 0 // TODO
 
 	for _, name := range items {

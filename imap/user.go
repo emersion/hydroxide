@@ -17,7 +17,7 @@ import (
 var systemMailboxes = []struct {
 	name  string
 	label string
-	flags []string
+	attrs []string
 }{
 	{imap.InboxName, protonmail.LabelInbox, nil},
 	{"All Mail", protonmail.LabelAllMail, []string{specialuse.All}},
@@ -111,7 +111,7 @@ func (u *user) initMailboxes() error {
 
 	for _, data := range systemMailboxes {
 		var err error
-		u.mailboxes[data.label], err = newMailbox(data.name, data.label, data.flags, u)
+		u.mailboxes[data.label], err = newMailbox(data.name, data.label, data.attrs, u)
 		if err != nil {
 			return err
 		}
