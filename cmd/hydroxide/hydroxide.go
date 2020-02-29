@@ -33,24 +33,28 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func listenAndServeSMTP(addr string, authManager *auth.Manager) error {
+func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager) error {
 	be := smtpbackend.New(authManager)
 	s := smtp.NewServer(be)
 	s.Addr = addr
 	s.Domain = "localhost"     // TODO: make this configurable
 	s.AllowInsecureAuth = true // TODO: remove this
-	//s.Debug = os.Stdout
+	if debug {
+		s.Debug = os.Stdout
+	}
 
 	log.Println("SMTP server listening on", s.Addr)
 	return s.ListenAndServe()
 }
 
-func listenAndServeIMAP(addr string, authManager *auth.Manager, eventsManager *events.Manager) error {
+func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, eventsManager *events.Manager) error {
 	be := imapbackend.New(authManager, eventsManager)
 	s := imapserver.New(be)
 	s.Addr = addr
 	s.AllowInsecureAuth = true // TODO: remove this
-	//s.Debug = os.Stdout
+	if debug {
+		s.Debug = os.Stdout
+	}
 
 	s.Enable(imapspacialuse.NewExtension())
 	s.Enable(imapmove.NewExtension())
@@ -103,6 +107,8 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 }
 
 func main() {
+	debug := flag.Bool("debug", false, "Enable debug logs")
+
 	smtpHost := flag.String("smtp-host", "127.0.0.1", "Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	smtpPort := flag.String("smtp-port", "1025", "SMTP port on which hydroxide listens, defaults to 1025")
 
@@ -302,12 +308,12 @@ func main() {
 	case "smtp":
 		addr := *smtpHost + ":" + *smtpPort
 		authManager := auth.NewManager(newClient)
-		log.Fatal(listenAndServeSMTP(addr, authManager))
+		log.Fatal(listenAndServeSMTP(addr, *debug, authManager))
 	case "imap":
 		addr := *imapHost + ":" + *imapPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		log.Fatal(listenAndServeIMAP(addr, authManager, eventsManager))
+		log.Fatal(listenAndServeIMAP(addr, *debug, authManager, eventsManager))
 	case "carddav":
 		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
@@ -323,10 +329,10 @@ func main() {
 
 		done := make(chan error, 3)
 		go func() {
-			done <- listenAndServeSMTP(smtpAddr, authManager)
+			done <- listenAndServeSMTP(smtpAddr, *debug, authManager)
 		}()
 		go func() {
-			done <- listenAndServeIMAP(imapAddr, authManager, eventsManager)
+			done <- listenAndServeIMAP(imapAddr, *debug, authManager, eventsManager)
 		}()
 		go func() {
 			done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager)
@@ -345,6 +351,8 @@ Commands:
 	status			View hydroxide status
 
 Flags:
+	-debug
+		Enable debug logs
 	-smtp-host example.com
 		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
 	-imap-host example.com
