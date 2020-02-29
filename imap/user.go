@@ -44,22 +44,25 @@ type user struct {
 	u           *protonmail.User
 	privateKeys openpgp.EntityList
 	addrs       []*protonmail.Address
-	numClients  int
 
 	db             *database.User
 	eventsReceiver *events.Receiver
 
-	locker    sync.Mutex
-	mailboxes map[string]*mailbox // indexed by label ID
-	flags     map[string]string   // indexed by label ID
-
 	done      chan<- struct{}
 	eventSent chan struct{}
+
+	sync.Mutex // protects everything below
+
+	numClients int
+	mailboxes  map[string]*mailbox // indexed by label ID
+	flags      map[string]string   // indexed by label ID
 }
 
 func getUser(be *backend, username string, c *protonmail.Client, privateKeys openpgp.EntityList) (*user, error) {
 	if u, ok := be.users[username]; ok {
+		u.Lock()
 		u.numClients++
+		u.Unlock()
 		return u, nil
 	} else {
 		pu, err := c.GetCurrentUser()
@@ -141,8 +144,8 @@ func labelNameToFlag(s string) string {
 }
 
 func (u *user) initMailboxes() error {
-	u.locker.Lock()
-	defer u.locker.Unlock()
+	u.Lock()
+	defer u.Unlock()
 
 	u.mailboxes = make(map[string]*mailbox)
 	for _, data := range systemMailboxes {
@@ -202,8 +205,8 @@ func (u *user) Username() string {
 }
 
 func (u *user) ListMailboxes(subscribed bool) ([]imapbackend.Mailbox, error) {
-	u.locker.Lock()
-	defer u.locker.Unlock()
+	u.Lock()
+	defer u.Unlock()
 
 	list := make([]imapbackend.Mailbox, 0, len(u.mailboxes))
 	for _, mbox := range u.mailboxes {
@@ -213,14 +216,14 @@ func (u *user) ListMailboxes(subscribed bool) ([]imapbackend.Mailbox, error) {
 }
 
 func (u *user) getMailboxByLabel(labelID string) *mailbox {
-	u.locker.Lock()
-	defer u.locker.Unlock()
+	u.Lock()
+	defer u.Unlock()
 	return u.mailboxes[labelID]
 }
 
 func (u *user) getMailbox(name string) *mailbox {
-	u.locker.Lock()
-	defer u.locker.Unlock()
+	u.Lock()
+	defer u.Unlock()
 
 	for _, mbox := range u.mailboxes {
 		if mbox.name == name {
@@ -239,8 +242,8 @@ func (u *user) GetMailbox(name string) (imapbackend.Mailbox, error) {
 }
 
 func (u *user) getFlag(name string) string {
-	u.locker.Lock()
-	defer u.locker.Unlock()
+	u.Lock()
+	defer u.Unlock()
 
 	for label, flag := range u.flags {
 		if flag == name {
@@ -263,6 +266,9 @@ func (u *user) RenameMailbox(existingName, newName string) error {
 }
 
 func (u *user) Logout() error {
+	u.Lock()
+	defer u.Unlock()
+
 	if u.numClients <= 0 {
 		panic("unreachable")
 	}
@@ -298,13 +304,13 @@ func (u *user) receiveEvents(updates chan<- imapbackend.Update, events <-chan *p
 		if event.Refresh&protonmail.EventRefreshMail != 0 {
 			log.Println("Reinitializing the whole IMAP database")
 
-			u.locker.Lock()
+			u.Lock()
 			for _, mbox := range u.mailboxes {
 				if err := mbox.reset(); err != nil {
 					log.Printf("cannot reset mailbox %s: %v", mbox.name, err)
 				}
 			}
-			u.locker.Unlock()
+			u.Unlock()
 
 			if err := u.db.ResetMessages(); err != nil {
 				log.Printf("cannot reset user: %v", err)
@@ -406,14 +412,14 @@ func (u *user) receiveEvents(updates chan<- imapbackend.Update, events <-chan *p
 				}
 			}
 
-			u.locker.Lock()
+			u.Lock()
 			for _, count := range event.MessageCounts {
 				if mbox, ok := u.mailboxes[count.LabelID]; ok {
 					mbox.total = count.Total
 					mbox.unread = count.Unread
 				}
 			}
-			u.locker.Unlock()
+			u.Unlock()
 		}
 
 		for _, update := range eventUpdates {

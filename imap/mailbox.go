@@ -24,9 +24,9 @@ type mailbox struct {
 	u  *user
 	db *database.Mailbox
 
-	initialized     bool
-	initializedLock sync.Mutex
+	sync.Mutex // protects everything below
 
+	initialized   bool
 	total, unread int
 	deleted       map[string]struct{}
 }
@@ -60,19 +60,22 @@ func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
 }
 
 func (mbox *mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error) {
-	mbox.u.locker.Lock()
+	mbox.u.Lock()
 	flags := []string{imap.SeenFlag, imap.DeletedFlag}
 	permFlags := []string{imap.SeenFlag}
 	for _, flag := range mbox.u.flags {
 		flags = append(flags, flag)
 		permFlags = append(permFlags, flag)
 	}
-	mbox.u.locker.Unlock()
+	mbox.u.Unlock()
 
 	status := imap.NewMailboxStatus(mbox.name, items)
 	status.Flags = flags
 	status.PermanentFlags = permFlags
 	status.UnseenSeqNum = 0 // TODO
+
+	mbox.Lock()
+	defer mbox.Unlock()
 
 	for _, name := range items {
 		switch name {
@@ -141,13 +144,12 @@ func (mbox *mailbox) sync() error {
 	}
 
 	log.Printf("Synchronizing mailbox %v: done.", mbox.name)
-
 	return nil
 }
 
 func (mbox *mailbox) init() error {
-	mbox.initializedLock.Lock()
-	defer mbox.initializedLock.Unlock()
+	mbox.Lock()
+	defer mbox.Unlock()
 
 	if mbox.initialized {
 		return nil
@@ -163,11 +165,10 @@ func (mbox *mailbox) init() error {
 }
 
 func (mbox *mailbox) reset() error {
-	mbox.initializedLock.Lock()
-	defer mbox.initializedLock.Unlock()
+	mbox.Lock()
+	defer mbox.Unlock()
 
 	mbox.initialized = false
-
 	return mbox.db.Reset()
 }
 
@@ -179,14 +180,21 @@ func (mbox *mailbox) fetchFlags(msg *protonmail.Message) []string {
 	if msg.IsReplied != 0 || msg.IsRepliedAll != 0 {
 		flags = append(flags, imap.AnsweredFlag)
 	}
+
+	mbox.Lock()
 	if _, ok := mbox.deleted[msg.ID]; ok {
 		flags = append(flags, imap.DeletedFlag)
 	}
+	mbox.Unlock()
+
+	mbox.u.Lock()
 	for _, label := range msg.LabelIDs {
 		if flag, ok := mbox.u.flags[label]; ok {
 			flags = append(flags, flag)
 		}
 	}
+	mbox.u.Unlock()
+
 	return flags
 }
 
@@ -301,7 +309,7 @@ func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint3
 
 	// TODO: c.Not, c.Or
 	if c.Not != nil || c.Or != nil {
-		return nil, errors.New("search queries with NOT or OR clauses or not yet implemented")
+		return nil, errors.New("search queries with NOT or OR clauses are not yet implemented")
 	}
 
 	var results []uint32
@@ -457,6 +465,7 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 			}
 		case imap.DeletedFlag:
 			// TODO: send updates
+			mbox.Lock()
 			switch op {
 			case imap.SetFlags, imap.AddFlags:
 				for _, apiID := range apiIDs {
@@ -467,6 +476,7 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 					delete(mbox.deleted, apiID)
 				}
 			}
+			mbox.Unlock()
 		case imap.DraftFlag:
 			// No-op
 		default:
@@ -541,9 +551,11 @@ func (mbox *mailbox) Expunge() error {
 	}
 
 	apiIDs := make([]string, 0, len(mbox.deleted))
+	mbox.Lock()
 	for apiID := range mbox.deleted {
 		apiIDs = append(apiIDs, apiID)
 	}
+	mbox.Unlock()
 
 	if err := mbox.u.c.DeleteMessages(apiIDs); err != nil {
 		return err
