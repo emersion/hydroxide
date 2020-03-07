@@ -154,7 +154,7 @@ func main() {
 	cmd := flag.Arg(0)
 	switch cmd {
 	case "auth":
-		authCmd.Parse(os.Args[2:])
+		authCmd.Parse(flag.Args()[1:])
 		username := authCmd.Arg(0)
 		if username == "" {
 			log.Fatal("usage: hydroxide auth <username>")
@@ -267,7 +267,7 @@ func main() {
 			}
 		}
 	case "export-secret-keys":
-		exportSecretKeysCmd.Parse(os.Args[2:])
+		exportSecretKeysCmd.Parse(flag.Args()[1:])
 		username := exportSecretKeysCmd.Arg(0)
 		if username == "" {
 			log.Fatal("usage: hydroxide export-secret-keys <username>")
@@ -303,7 +303,7 @@ func main() {
 	case "import-messages":
 		// TODO: support for mbox
 
-		importMessagesCmd.Parse(os.Args[2:])
+		importMessagesCmd.Parse(flag.Args()[1:])
 		username := importMessagesCmd.Arg(0)
 		archivePath := importMessagesCmd.Arg(1)
 		if username == "" || archivePath == "" {
