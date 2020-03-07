@@ -55,6 +55,7 @@ func (err *APIError) Error() string {
 type Client struct {
 	RootURL    string
 	AppVersion string
+	Debug      bool
 
 	HTTPClient *http.Client
 	ReAuth     func() error
@@ -77,7 +78,9 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 		return nil, err
 	}
 
-	//log.Printf(">> %v %v\n", method, path)
+	if c.Debug {
+		log.Printf(">> %v %v\n", req.Method, req.URL.Path)
+	}
 
 	req.Header.Set("X-Pm-Appversion", c.AppVersion)
 	req.Header.Set(headerAPIVersion, strconv.Itoa(Version))
@@ -92,11 +95,13 @@ func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Re
 	}
 	b := buf.Bytes()
 
-	//log.Printf(">> %v %v\n%v", method, path, string(b))
-
 	req, err := c.newRequest(method, path, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
+	}
+
+	if c.Debug {
+		log.Print(string(b))
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -157,7 +162,10 @@ func (c *Client) doJSON(req *http.Request, respData interface{}) error {
 		return err
 	}
 
-	//log.Printf("<< %v %v\n%#v", req.Method, req.URL.Path, respData)
+	if c.Debug {
+		log.Printf("<< %v %v", req.Method, req.URL.Path)
+		log.Printf("%#v", respData)
+	}
 
 	if maybeError, ok := respData.(maybeError); ok {
 		if err := maybeError.Err(); err != nil {

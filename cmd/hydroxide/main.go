@@ -26,10 +26,13 @@ import (
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
 
+var debug bool
+
 func newClient() *protonmail.Client {
 	return &protonmail.Client{
 		RootURL:    "https://mail.protonmail.com/api",
 		AppVersion: "Web_3.16.6",
+		Debug:      debug,
 	}
 }
 
@@ -134,7 +137,7 @@ Flags:
 		CardDAV port on which hydroxide listens, defaults to 8080`
 
 func main() {
-	debug := flag.Bool("debug", false, "Enable debug logs")
+	flag.BoolVar(&debug, "debug", false, "Enable debug logs")
 
 	smtpHost := flag.String("smtp-host", "127.0.0.1", "Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	smtpPort := flag.String("smtp-port", "1025", "SMTP port on which hydroxide listens, defaults to 1025")
@@ -335,12 +338,12 @@ func main() {
 	case "smtp":
 		addr := *smtpHost + ":" + *smtpPort
 		authManager := auth.NewManager(newClient)
-		log.Fatal(listenAndServeSMTP(addr, *debug, authManager))
+		log.Fatal(listenAndServeSMTP(addr, debug, authManager))
 	case "imap":
 		addr := *imapHost + ":" + *imapPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		log.Fatal(listenAndServeIMAP(addr, *debug, authManager, eventsManager))
+		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager))
 	case "carddav":
 		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
@@ -356,10 +359,10 @@ func main() {
 
 		done := make(chan error, 3)
 		go func() {
-			done <- listenAndServeSMTP(smtpAddr, *debug, authManager)
+			done <- listenAndServeSMTP(smtpAddr, debug, authManager)
 		}()
 		go func() {
-			done <- listenAndServeIMAP(imapAddr, *debug, authManager, eventsManager)
+			done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager)
 		}()
 		go func() {
 			done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager)
