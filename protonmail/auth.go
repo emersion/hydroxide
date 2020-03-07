@@ -169,7 +169,6 @@ func (c *Client) AuthTOTP(code string) (scope string, err error) {
 }
 
 type authRefreshReq struct {
-	UID          string `json:"Uid"`
 	RefreshToken string
 
 	// Unused but required
@@ -180,7 +179,6 @@ type authRefreshReq struct {
 
 func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	reqData := &authRefreshReq{
-		UID:          expiredAuth.UID,
 		RefreshToken: expiredAuth.RefreshToken,
 		ResponseType: "token",
 		GrantType:    "refresh_token",
@@ -191,6 +189,7 @@ func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("X-Pm-Uid", expiredAuth.UID)
 
 	var respData authResp
 	if err := c.doJSON(req, &respData); err != nil {
