@@ -56,11 +56,11 @@ type MessageAddress struct {
 type Message struct {
 	ID             string
 	Order          int64
+	ConversationID string
 	Subject        string
 	Unread         int
 	Type           MessageType
 	Sender         *MessageAddress
-	ReplyTo        *MessageAddress
 	ToList         []*MessageAddress
 	Time           int64
 	Size           int64
@@ -76,6 +76,7 @@ type Message struct {
 	MIMEType       string `json:",omitempty"`
 	CCList         []*MessageAddress
 	BCCList        []*MessageAddress
+	ReplyTos       []*MessageAddress
 	Header         string
 	Attachments    []*Attachment
 	LabelIDs       []string

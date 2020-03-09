@@ -67,20 +67,15 @@ func imapAddressList(addresses []*protonmail.MessageAddress) []*imap.Address {
 }
 
 func fetchEnvelope(msg *protonmail.Message) *imap.Envelope {
-	var replyTo []*imap.Address
-	if msg.ReplyTo != nil {
-		replyTo = []*imap.Address{imapAddress(msg.ReplyTo)}
-	}
-
 	return &imap.Envelope{
 		Date:    time.Unix(msg.Time, 0),
 		Subject: msg.Subject,
 		From:    []*imap.Address{imapAddress(msg.Sender)},
 		// TODO: Sender
-		ReplyTo: replyTo,
 		To:      imapAddressList(msg.ToList),
 		Cc:      imapAddressList(msg.CCList),
 		Bcc:     imapAddressList(msg.BCCList),
+		ReplyTo: imapAddressList(msg.ReplyTos),
 		// TODO: InReplyTo
 		MessageId: messageID(msg),
 	}
@@ -220,8 +215,8 @@ func messageHeader(msg *protonmail.Message) message.Header {
 	h.SetDate(time.Unix(msg.Time, 0))
 	h.SetSubject(msg.Subject)
 	h.SetAddressList("From", []*mail.Address{mailAddress(msg.Sender)})
-	if msg.ReplyTo != nil {
-		h.SetAddressList("Reply-To", []*mail.Address{mailAddress(msg.ReplyTo)})
+	if len(msg.ReplyTos) > 0 {
+		h.SetAddressList("Reply-To", mailAddressList(msg.ReplyTos))
 	}
 	if len(msg.ToList) > 0 {
 		h.SetAddressList("To", mailAddressList(msg.ToList))
