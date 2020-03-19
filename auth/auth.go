@@ -127,6 +127,11 @@ func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string)
 		if err != nil {
 			return nil, fmt.Errorf("cannot re-authenticate: %v", err)
 		}
+
+		err = c.AuthCookies(auth)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get cookies: %v", err)
+		}
 	} else if err != nil {
 		return nil, err
 	}

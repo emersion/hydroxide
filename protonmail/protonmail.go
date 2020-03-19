@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"golang.org/x/crypto/openpgp"
@@ -18,6 +19,7 @@ import (
 const Version = 3
 
 const headerAPIVersion = "X-Pm-Apiversion"
+const headerAppVersion = "X-Pm-Appversion"
 
 type resp struct {
 	Code int
@@ -62,13 +64,24 @@ type Client struct {
 
 	uid         string
 	accessToken string
+	authToken   string
 	keyRing     openpgp.EntityList
 }
 
 func (c *Client) setRequestAuthorization(req *http.Request) {
-	if c.uid != "" && c.accessToken != "" {
+	if c.uid != "" {
 		req.Header.Set("X-Pm-Uid", c.uid)
-		req.Header.Set("Authorization", "Bearer "+c.accessToken)
+
+		if c.authToken != "" {
+			var authCookie http.Cookie
+			authCookie.Name = "AUTH-" + c.uid
+			authCookie.Value = url.QueryEscape(c.authToken)
+			req.AddCookie(&authCookie)
+		}
+
+		if c.accessToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.accessToken)
+		}
 	}
 }
 
@@ -82,7 +95,7 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 		log.Printf(">> %v %v\n", req.Method, req.URL.Path)
 	}
 
-	req.Header.Set("X-Pm-Appversion", c.AppVersion)
+	req.Header.Set(headerAppVersion, c.AppVersion)
 	req.Header.Set(headerAPIVersion, strconv.Itoa(Version))
 	c.setRequestAuthorization(req)
 	return req, nil
@@ -174,4 +187,32 @@ func (c *Client) doJSON(req *http.Request, respData interface{}) error {
 		}
 	}
 	return nil
+}
+
+func (c *Client) doJSONWithCookies(req *http.Request, respData interface{}) ([]*http.Cookie, error) {
+	req.Header.Set("Accept", "application/json")
+
+	if respData == nil {
+		respData = new(resp)
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := json.NewDecoder(resp.Body).Decode(respData); err != nil {
+		return nil, err
+	}
+
+	//log.Printf("<< %v %v\n%#v", req.Method, req.URL.Path, respData)
+
+	if maybeError, ok := respData.(maybeError); ok {
+		if err := maybeError.Err(); err != nil {
+			log.Printf("request failed: %v %v: %v", req.Method, req.URL.String(), err)
+			return nil, err
+		}
+	}
+	return resp.Cookies(), nil
 }

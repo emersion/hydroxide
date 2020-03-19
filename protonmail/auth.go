@@ -1,10 +1,17 @@
 package protonmail
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/openpgp"
@@ -89,6 +96,8 @@ type Auth struct {
 		U2F     interface{} // TODO
 		TOTP    int
 	} `json:"2FA"`
+
+	RefreshCookie string
 }
 
 type authResp struct {
@@ -97,6 +106,12 @@ type authResp struct {
 	ExpiresIn   int
 	TokenType   string
 	ServerProof string
+}
+
+type refreshResp struct {
+	resp
+	UID          string
+	SessionToken string
 }
 
 func (resp *authResp) auth() *Auth {
@@ -168,35 +183,141 @@ func (c *Client) AuthTOTP(code string) (scope string, err error) {
 	return respData.Scope, nil
 }
 
-type authRefreshReq struct {
-	RefreshToken string
+func getRandomString(length int) string {
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	result := make([]byte, length)
 
-	// Unused but required
-	ResponseType string
-	GrantType    string
-	RedirectURI  string
+	for i := 0; i < length; i++ {
+		result[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(result)
+}
+
+func (c *Client) AuthCookies(auth *Auth) error {
+	reqData := struct {
+		UID          string
+		RefreshToken string
+		AccessToken  string
+		ResponseType string
+		GrantType    string
+		RedirectURI  string
+		State        string
+	}{
+		UID:          auth.UID,
+		RefreshToken: auth.RefreshToken,
+		AccessToken:  auth.AccessToken,
+		ResponseType: "token",
+		GrantType:    "refresh_token",
+		RedirectURI:  "https://protonmail.com",
+		State:        getRandomString(24),
+	}
+
+	req, err := c.newJSONRequest(http.MethodPost, "/auth/cookies", reqData)
+	if err != nil {
+		return err
+	}
+
+	var respData refreshResp
+	var respCookies []*http.Cookie
+	if respCookies, err = c.doJSONWithCookies(req, &respData); err != nil {
+		return err
+	}
+
+	refreshCookie := ""
+	authCookie := ""
+
+	for _, cookie := range respCookies {
+		unescaped, err := url.QueryUnescape(cookie.Value)
+		if err != nil {
+			log.Printf("Cookie '%v=%v' unescape error %v", cookie.Name, cookie.Value, err)
+			return err
+		}
+
+		if cookie.Name == "REFRESH-"+respData.UID {
+			refreshCookie = unescaped
+		} else if cookie.Name == "AUTH-"+respData.UID {
+			authCookie = unescaped
+		}
+	}
+
+	if refreshCookie != "" && authCookie != "" {
+		auth.RefreshCookie = refreshCookie
+		c.authToken = authCookie
+		c.uid = respData.UID
+		auth.UID = respData.UID
+	} else {
+		log.Println("Required cookies are missing")
+		return &APIError{Code: -1, Message: "Required cookies are missing"}
+	}
+
+	return nil
 }
 
 func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
-	reqData := &authRefreshReq{
-		RefreshToken: expiredAuth.RefreshToken,
-		ResponseType: "token",
-		GrantType:    "refresh_token",
-		RedirectURI:  "http://www.protonmail.ch",
-	}
 
-	req, err := c.newJSONRequest(http.MethodPost, "/auth/refresh", reqData)
+	b := bytes.Buffer{}
+	bb := b.Bytes()
+	req, err := c.newRequest(http.MethodPost, "/auth/refresh", bytes.NewReader(bb))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Pm-Uid", expiredAuth.UID)
 
+	req.GetBody = func() (io.ReadCloser, error) {
+		return ioutil.NopCloser(bytes.NewReader(bb)), nil
+	}
+
+	if expiredAuth.RefreshCookie != "" && expiredAuth.UID != "" {
+		var refreshCookie http.Cookie
+		refreshCookie.Name = "REFRESH-" + expiredAuth.UID
+		refreshCookie.Value = url.QueryEscape(expiredAuth.RefreshCookie)
+		req.AddCookie(&refreshCookie)
+	}
+
 	var respData authResp
-	if err := c.doJSON(req, &respData); err != nil {
+	var respCookies []*http.Cookie
+	if respCookies, err = c.doJSONWithCookies(req, &respData); err != nil {
 		return nil, err
 	}
 
 	auth := respData.auth()
+
+	refreshCookie := ""
+	authCookie := ""
+
+	for _, cookie := range respCookies {
+		unescaped, err := url.QueryUnescape(cookie.Value)
+		if err != nil {
+			log.Printf("Cookie '%v=%v' unescape error %v\n", cookie.Name, cookie.Value, err)
+			return nil, err
+		}
+
+		if cookie.Name == "REFRESH-"+respData.UID {
+			refreshCookie = unescaped
+		} else if cookie.Name == "AUTH-"+respData.UID {
+			authCookie = unescaped
+		}
+	}
+
+	if refreshCookie != "" && authCookie != "" {
+		auth.RefreshCookie = refreshCookie
+		var authToken struct {
+			AccessToken string
+			UID         string
+		}
+		if err := json.NewDecoder(strings.NewReader(authCookie)).Decode(&authToken); err != nil {
+			return nil, err
+		}
+		auth.AccessToken = authToken.AccessToken
+		c.authToken = authCookie
+		c.uid = respData.UID
+		auth.UID = respData.UID
+	} else {
+		log.Println("Required cookies are missing")
+		return nil, &APIError{Code: -1, Message: "Required cookies are missing"}
+	}
+
 	//auth.EventID = expiredAuth.EventID
 	auth.PasswordMode = expiredAuth.PasswordMode
 	return auth, nil
