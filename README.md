@@ -40,6 +40,15 @@ Start by installing hydroxide:
 GO111MODULE=on go get github.com/emersion/hydroxide/cmd/hydroxide
 ```
 
+#### Community Packages
+
+These are **unofficial** packages provided by community members to ease the
+installation process.
+
+* Arch Linux (AUR):
+[hydroxide](https://aur.archlinux.org/packages/hydroxide),
+[hydroxide-git](https://aur.archlinux.org/packages/hydroxide-git)
+
 ### Account Setup
 
 Now you'll need to login to ProtonMail via hydroxide, so that hydroxide can
