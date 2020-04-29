@@ -40,7 +40,9 @@ Start by installing hydroxide:
 GO111MODULE=on go get github.com/emersion/hydroxide/cmd/hydroxide
 ```
 
-Then you'll need to login to ProtonMail via hydroxide, so that hydroxide can
+### Account Setup
+
+Now you'll need to login to ProtonMail via hydroxide, so that hydroxide can
 retrieve e-mails from ProtonMail. You can do so with this command:
 
 ```shell
