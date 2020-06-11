@@ -30,7 +30,9 @@ func ImportMessage(c *protonmail.Client, r io.Reader) error {
 		}
 
 		if _, ok := p.Header.(*mail.InlineHeader); ok {
-			hdr.Set("Content-Type", p.Header.Get("Content-Type"))
+			if t := p.Header.Get("Content-Type"); t != "" {
+				hdr.Set("Content-Type", t)
+			}
 			body = p.Body
 			break
 		}
