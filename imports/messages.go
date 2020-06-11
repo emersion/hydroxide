@@ -98,7 +98,7 @@ func ImportMessage(c *protonmail.Client, r io.Reader) error {
 	}
 	defer ewc.Close()
 
-	if _, err := io.Copy(w, body); err != nil {
+	if _, err := io.Copy(ewc, body); err != nil {
 		return err
 	}
 	if err := ewc.Close(); err != nil {
