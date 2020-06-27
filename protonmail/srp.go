@@ -1,19 +1,17 @@
 package protonmail
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	// "log"
 	"math/big"
 
-	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
-	openpgperrors "golang.org/x/crypto/openpgp/errors"
+	// openpgperrors "golang.org/x/crypto/openpgp/errors"
 )
 
 var randReader io.Reader = rand.Reader
@@ -25,11 +23,12 @@ func decodeModulus(msg string) ([]byte, error) {
 	}
 
 	// TODO: check signature and signature key
-	_, err := openpgp.CheckDetachedSignature(nil, bytes.NewReader(block.Plaintext), block.ArmoredSignature.Body)
-	if err != nil && err != openpgperrors.ErrUnknownIssuer {
+	// FIXME: segfaults
+	// _, err := block.VerifySignature(nil, nil)
+	// if err != nil && err != openpgperrors.ErrUnknownIssuer {
 		//return nil, fmt.Errorf("failed to decode modulus: %v", err)
-		log.Println("warning: failed to check SRP modulus signature:", err)
-	}
+	//	log.Println("warning: failed to check SRP modulus signature:", err)
+	//}
 
 	b, err := base64.StdEncoding.DecodeString(string(block.Plaintext))
 	if err != nil {
