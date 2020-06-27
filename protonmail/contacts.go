@@ -164,7 +164,7 @@ func (r *detachedSignatureReader) Read(p []byte) (n int, err error) {
 	n, err = r.body.Read(p)
 	if err == io.EOF && !r.eof {
 		// Check signature
-		signer, signatureError := openpgp.CheckArmoredDetachedSignature(r.keyring, &r.signed, r.signature)
+		signer, signatureError := openpgp.CheckArmoredDetachedSignature(r.keyring, &r.signed, r.signature, nil)
 		r.md.IsSigned = true
 		r.md.SignatureError = signatureError
 		if signer != nil {
@@ -190,7 +190,7 @@ func (card *ContactCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails,
 
 		signed := strings.NewReader(card.Data)
 		signature := strings.NewReader(card.Signature)
-		signer, err := openpgp.CheckArmoredDetachedSignature(keyring, signed, signature)
+		signer, err := openpgp.CheckArmoredDetachedSignature(keyring, signed, signature, nil)
 		md.IsSigned = true
 		md.SignatureError = err
 		if signer != nil {
