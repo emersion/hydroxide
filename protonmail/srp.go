@@ -1,20 +1,37 @@
 package protonmail
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	// "log"
+	"log"
 	"math/big"
 
+	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
-	// openpgperrors "golang.org/x/crypto/openpgp/errors"
+	openpgperrors "golang.org/x/crypto/openpgp/errors"
 )
 
 var randReader io.Reader = rand.Reader
+
+// Public key for SRP verification
+// From https://github.com/ProtonMail/proton-bridge/blob/99721b6577fe9079ac7547f11fc77e5090cdd31b/pkg/srp/srp.go#L41-L52
+const modulusPubkey = `-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+xjMEXAHLgxYJKwYBBAHaRw8BAQdAFurWXXwjTemqjD7CXjXVyKf0of7n9Ctm
+L8v9enkzggHNEnByb3RvbkBzcnAubW9kdWx1c8J3BBAWCgApBQJcAcuDBgsJ
+BwgDAgkQNQWFxOlRjyYEFQgKAgMWAgECGQECGwMCHgEAAPGRAP9sauJsW12U
+MnTQUZpsbJb53d0Wv55mZIIiJL2XulpWPQD/V6NglBd96lZKBmInSXX/kXat
+Sv+y0io+LR8i2+jV+AbOOARcAcuDEgorBgEEAZdVAQUBAQdAeJHUz1c9+KfE
+kSIgcBRE3WuXC4oj5a2/U3oASExGDW4DAQgHwmEEGBYIABMFAlwBy4MJEDUF
+hcTpUY8mAhsMAAD/XQD8DxNI6E78meodQI+wLsrKLeHn32iLvUqJbVDhfWSU
+WO4BAMcm1u02t4VKw++ttECPt+HUgPUq5pqQWe5Q2cW4TMsE
+=Y4Mw
+-----END PGP PUBLIC KEY BLOCK-----`
 
 func decodeModulus(msg string) ([]byte, error) {
 	block, _ := clearsign.Decode([]byte(msg))
@@ -22,13 +39,16 @@ func decodeModulus(msg string) ([]byte, error) {
 		return nil, errors.New("invalid SRP modulus signed PGP block")
 	}
 
-	// TODO: check signature and signature key
-	// FIXME: segfaults
-	// _, err := block.VerifySignature(nil, nil)
-	// if err != nil && err != openpgperrors.ErrUnknownIssuer {
+	modulusKeyring, err := openpgp.ReadArmoredKeyRing(bytes.NewReader([]byte(modulusPubkey)))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read modulus pubkey: %v", err)
+	}
+
+	_, err = openpgp.CheckDetachedSignature(modulusKeyring, bytes.NewReader(block.Bytes), block.ArmoredSignature.Body, nil)
+	if err != nil && err != openpgperrors.ErrUnknownIssuer {
 		//return nil, fmt.Errorf("failed to decode modulus: %v", err)
-	//	log.Println("warning: failed to check SRP modulus signature:", err)
-	//}
+		log.Println("warning: failed to check SRP modulus signature:", err)
+	}
 
 	b, err := base64.StdEncoding.DecodeString(string(block.Plaintext))
 	if err != nil {
