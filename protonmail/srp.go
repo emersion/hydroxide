@@ -8,12 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 
 	"golang.org/x/crypto/openpgp"
 	"golang.org/x/crypto/openpgp/clearsign"
-	openpgperrors "golang.org/x/crypto/openpgp/errors"
 )
 
 var randReader io.Reader = rand.Reader
@@ -45,9 +43,8 @@ func decodeModulus(msg string) ([]byte, error) {
 	}
 
 	_, err = openpgp.CheckDetachedSignature(modulusKeyring, bytes.NewReader(block.Bytes), block.ArmoredSignature.Body, nil)
-	if err != nil && err != openpgperrors.ErrUnknownIssuer {
-		//return nil, fmt.Errorf("failed to decode modulus: %v", err)
-		log.Println("warning: failed to check SRP modulus signature:", err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check modulus signature: %v", err)
 	}
 
 	b, err := base64.StdEncoding.DecodeString(string(block.Plaintext))
