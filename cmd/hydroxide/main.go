@@ -109,7 +109,7 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 	return s.ListenAndServe()
 }
 
-const usage = `usage: hydroxide <command> <flags>
+const usage = `usage: hydroxide <flags> <command>
 Commands:
 	auth <username>		Login to ProtonMail via hydroxide
 	carddav			Run hydroxide as a CardDAV server
