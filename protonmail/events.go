@@ -53,7 +53,7 @@ type EventMessage struct {
 type EventMessageUpdate struct {
 	Unread       *int
 	Type         *MessageType
-	Time         int64
+	Time         Timestamp
 	IsReplied    *int
 	IsRepliedAll *int
 	IsForwarded  *int

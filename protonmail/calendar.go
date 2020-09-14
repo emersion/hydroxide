@@ -23,8 +23,8 @@ type CalendarEvent struct {
 	ID                string
 	CalendarID        string
 	CalendarKeyPacket string
-	CreateTime        int64
-	LastEditTime      int64
+	CreateTime        Timestamp
+	LastEditTime      Timestamp
 	Author            string
 	Permissions       CalendarEventPermissions
 	SharedKeyPacket   string

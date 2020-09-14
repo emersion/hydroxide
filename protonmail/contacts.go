@@ -18,8 +18,8 @@ type Contact struct {
 	Name       string
 	UID        string
 	Size       int
-	CreateTime int64
-	ModifyTime int64
+	CreateTime Timestamp
+	ModifyTime Timestamp
 	LabelIDs   []string
 
 	// Not when using ListContacts

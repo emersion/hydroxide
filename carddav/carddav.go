@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
@@ -125,7 +124,7 @@ func (b *backend) toAddressObject(contact *protonmail.Contact, req *carddav.Addr
 
 	return &carddav.AddressObject{
 		Path:    formatAddressObjectPath(contact.ID),
-		ModTime: time.Unix(contact.ModifyTime, 0),
+		ModTime: contact.ModifyTime.Time(),
 		// TODO: stronger ETag
 		ETag: fmt.Sprintf("%x%x", contact.ModifyTime, contact.Size),
 		Card: card,

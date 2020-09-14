@@ -234,7 +234,7 @@ func (mbox *mailbox) fetchMessage(isUid bool, id uint32, items []imap.FetchItem)
 		case imap.FetchFlags:
 			fetched.Flags = mbox.fetchFlags(msg)
 		case imap.FetchInternalDate:
-			fetched.InternalDate = time.Unix(msg.Time, 0)
+			fetched.InternalDate = msg.Time.Time()
 		case imap.FetchRFC822Size:
 			fetched.Size = uint32(msg.Size)
 		case imap.FetchUid:
@@ -342,7 +342,7 @@ func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint3
 			}
 		}
 
-		date := time.Unix(msg.Time, 0).Round(24 * time.Hour)
+		date := msg.Time.Time().Round(24 * time.Hour)
 		if !c.Since.IsZero() && !date.After(c.Since) {
 			return nil
 		}

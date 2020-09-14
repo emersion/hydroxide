@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"time"
 
 	"golang.org/x/crypto/openpgp"
 
@@ -49,6 +50,12 @@ type APIError struct {
 
 func (err *APIError) Error() string {
 	return fmt.Sprintf("[%v] %v", err.Code, err.Message)
+}
+
+type Timestamp int64
+
+func (t Timestamp) Time() time.Time {
+	return time.Unix(int64(t), 0)
 }
 
 // Client is a ProtonMail API client.

@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-message"
@@ -68,7 +67,7 @@ func imapAddressList(addresses []*protonmail.MessageAddress) []*imap.Address {
 
 func fetchEnvelope(msg *protonmail.Message) *imap.Envelope {
 	return &imap.Envelope{
-		Date:    time.Unix(msg.Time, 0),
+		Date:    msg.Time.Time(),
 		Subject: msg.Subject,
 		From:    []*imap.Address{imapAddress(msg.Sender)},
 		// TODO: Sender
@@ -212,7 +211,7 @@ func mailAddressList(addresses []*protonmail.MessageAddress) []*mail.Address {
 func messageHeader(msg *protonmail.Message) message.Header {
 	var h mail.Header
 	h.SetContentType("multipart/mixed", nil)
-	h.SetDate(time.Unix(msg.Time, 0))
+	h.SetDate(msg.Time.Time())
 	h.SetSubject(msg.Subject)
 	h.SetAddressList("From", []*mail.Address{mailAddress(msg.Sender)})
 	if len(msg.ReplyTos) > 0 {

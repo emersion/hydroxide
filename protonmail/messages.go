@@ -62,11 +62,11 @@ type Message struct {
 	Type           MessageType
 	Sender         *MessageAddress
 	ToList         []*MessageAddress
-	Time           int64
+	Time           Timestamp
 	Size           int64
 	NumAttachments int
 	IsEncrypted    MessageEncryption
-	ExpirationTime int64
+	ExpirationTime Timestamp
 	IsReplied      int
 	IsRepliedAll   int
 	IsForwarded    int
