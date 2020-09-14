@@ -8,6 +8,7 @@ require (
 	github.com/emersion/go-imap v1.0.4
 	github.com/emersion/go-imap-move v0.0.0-20190710073258-6e5a51a5b342
 	github.com/emersion/go-imap-specialuse v0.0.0-20161227184202-ba031ced6a62
+	github.com/emersion/go-mbox v1.0.0
 	github.com/emersion/go-message v0.11.1
 	github.com/emersion/go-smtp v0.12.1
 	github.com/emersion/go-vcard v0.0.0-20191221110513-5f81fa0d3cc7

@@ -12,6 +12,7 @@ import (
 	imapmove "github.com/emersion/go-imap-move"
 	imapspacialuse "github.com/emersion/go-imap-specialuse"
 	imapserver "github.com/emersion/go-imap/server"
+	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-smtp"
 	"github.com/howeyc/gopass"
 	"golang.org/x/crypto/openpgp"
@@ -20,6 +21,7 @@ import (
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/events"
+	"github.com/emersion/hydroxide/exports"
 	imapbackend "github.com/emersion/hydroxide/imap"
 	"github.com/emersion/hydroxide/imports"
 	"github.com/emersion/hydroxide/protonmail"
@@ -116,6 +118,7 @@ Commands:
 	export-secret-keys <username> Export secret keys
 	imap			Run hydroxide as an IMAP server
 	import-messages <username> <file>	Import messages
+	export-messages [options...] <username>	Export messages
 	serve			Run all servers
 	smtp			Run hydroxide as an SMTP server
 	status			View hydroxide status
@@ -151,6 +154,7 @@ func main() {
 	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
 	importMessagesCmd := flag.NewFlagSet("import-messages", flag.ExitOnError)
+	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
 
 	flag.Parse()
 
@@ -333,6 +337,38 @@ func main() {
 		}
 
 		if err := imports.ImportMessage(c, f); err != nil {
+			log.Fatal(err)
+		}
+	case "export-messages":
+		var convID string
+		exportMessagesCmd.StringVar(&convID, "conversation-id", "", "conversation ID")
+		exportMessagesCmd.Parse(flag.Args()[1:])
+		username := exportMessagesCmd.Arg(0)
+		log.Println(convID, username)
+		if convID == "" || username == "" {
+			log.Fatal("usage: hydroxide export-messages -conversation-id <id> <username>")
+		}
+
+		var bridgePassword string
+		fmt.Fprintf(os.Stderr, "Bridge password: ")
+		if pass, err := gopass.GetPasswd(); err != nil {
+			log.Fatal(err)
+		} else {
+			bridgePassword = string(pass)
+		}
+
+		c, privateKeys, err := auth.NewManager(newClient).Auth(username, bridgePassword)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		mboxWriter := mbox.NewWriter(os.Stdout)
+
+		if err := exports.ExportConversation(c, privateKeys, mboxWriter, convID); err != nil {
+			log.Fatal(err)
+		}
+
+		if err := mboxWriter.Close(); err != nil {
 			log.Fatal(err)
 		}
 	case "smtp":
