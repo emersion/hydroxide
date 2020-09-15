@@ -340,13 +340,14 @@ func main() {
 			log.Fatal(err)
 		}
 	case "export-messages":
-		var convID string
+		// TODO: allow specifying multiple IDs
+		var convID, msgID string
 		exportMessagesCmd.StringVar(&convID, "conversation-id", "", "conversation ID")
+		exportMessagesCmd.StringVar(&msgID, "message-id", "", "message ID")
 		exportMessagesCmd.Parse(flag.Args()[1:])
 		username := exportMessagesCmd.Arg(0)
-		log.Println(convID, username)
-		if convID == "" || username == "" {
-			log.Fatal("usage: hydroxide export-messages -conversation-id <id> <username>")
+		if (convID == "" && msgID == "") || username == "" {
+			log.Fatal("usage: hydroxide export-messages [-conversation-id <id>] [-message-id <id>] <username>")
 		}
 
 		var bridgePassword string
@@ -364,8 +365,15 @@ func main() {
 
 		mboxWriter := mbox.NewWriter(os.Stdout)
 
-		if err := exports.ExportConversation(c, privateKeys, mboxWriter, convID); err != nil {
-			log.Fatal(err)
+		if convID != "" {
+			if err := exports.ExportConversationMbox(c, privateKeys, mboxWriter, convID); err != nil {
+				log.Fatal(err)
+			}
+		}
+		if msgID != "" {
+			if err := exports.ExportMessageMbox(c, privateKeys, mboxWriter, msgID); err != nil {
+				log.Fatal(err)
+			}
 		}
 
 		if err := mboxWriter.Close(); err != nil {

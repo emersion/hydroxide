@@ -15,12 +15,7 @@ import (
 	"github.com/emersion/hydroxide/protonmail"
 )
 
-func ExportMessage(c *protonmail.Client, privateKeys openpgp.KeyRing, w io.Writer, id string) error {
-	msg, err := c.GetMessage(id)
-	if err != nil {
-		return fmt.Errorf("failed to fetch message: %v", err)
-	}
-
+func writeMessage(c *protonmail.Client, privateKeys openpgp.KeyRing, w io.Writer, msg *protonmail.Message) error {
 	mimeType := msg.MIMEType
 	if mimeType == "" {
 		mimeType = "text/html"
@@ -55,19 +50,37 @@ func ExportMessage(c *protonmail.Client, privateKeys openpgp.KeyRing, w io.Write
 	return mw.Close()
 }
 
-func ExportConversation(c *protonmail.Client, privateKeys openpgp.KeyRing, mbox *mbox.Writer, id string) error {
+func ExportMessage(c *protonmail.Client, privateKeys openpgp.KeyRing, w io.Writer, id string) error {
+	msg, err := c.GetMessage(id)
+	if err != nil {
+		return fmt.Errorf("failed to fetch message: %v", err)
+	}
+
+	return writeMessage(c, privateKeys, w, msg)
+}
+
+func ExportMessageMbox(c *protonmail.Client, privateKeys openpgp.KeyRing, mbox *mbox.Writer, id string) error {
+	msg, err := c.GetMessage(id)
+	if err != nil {
+		return fmt.Errorf("failed to fetch message: %v", err)
+	}
+
+	w, err := mbox.CreateMessage(msg.Sender.Address, msg.Time.Time())
+	if err != nil {
+		return fmt.Errorf("failed to create mbox message: %v", err)
+	}
+
+	return writeMessage(c, privateKeys, w, msg)
+}
+
+func ExportConversationMbox(c *protonmail.Client, privateKeys openpgp.KeyRing, mbox *mbox.Writer, id string) error {
 	_, msgs, err := c.GetConversation(id, "")
 	if err != nil {
 		return fmt.Errorf("failed to fetch conversation: %v", err)
 	}
 
 	for _, msg := range msgs {
-		w, err := mbox.CreateMessage(msg.Sender.Address, msg.Time.Time())
-		if err != nil {
-			return fmt.Errorf("failed to create mbox message: %v", err)
-		}
-
-		if err := ExportMessage(c, privateKeys, w, msg.ID); err != nil {
+		if err := ExportMessageMbox(c, privateKeys, mbox, msg.ID); err != nil {
 			return fmt.Errorf("failed to export conversation message: %v", err)
 		}
 	}
