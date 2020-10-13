@@ -6,6 +6,8 @@ import (
 	"strconv"
 )
 
+const calendarPath = "/calendar/v1"
+
 type CalendarFlags int
 
 type Calendar struct {
@@ -49,7 +51,7 @@ func (c *Client) ListCalendars(page, pageSize int) ([]*Calendar, error) {
 		v.Set("PageSize", strconv.Itoa(pageSize))
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/calendars?"+v.Encode(), nil)
+	req, err := c.newRequest(http.MethodGet, calendarPath+"?"+v.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +83,7 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 		v.Set("PageSize", strconv.Itoa(filter.PageSize))
 	}
 
-	req, err := c.newRequest(http.MethodGet, "/calendars/"+calendarID+"/events?"+v.Encode(), nil)
+	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/events?"+v.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}
