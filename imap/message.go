@@ -174,7 +174,7 @@ func (mbox *mailbox) attachmentBody(att *protonmail.Attachment) (io.Reader, erro
 func inlineHeader(msg *protonmail.Message) message.Header {
 	var h mail.InlineHeader
 	if msg.MIMEType != "" {
-		h.SetContentType(msg.MIMEType, nil)
+		h.SetContentType(msg.MIMEType, map[string]string{"charset": "utf-8"})
 	} else {
 		log.Println("Sending an inline header without its proper MIME type")
 	}
