@@ -389,12 +389,15 @@ func (s *session) Data(r io.Reader) error {
 	return nil
 }
 
-func (s *session) Reset() {}
+func (s *session) Reset() {
+	s.allReceivers = nil
+}
 
 func (s *session) Logout() error {
 	s.c = nil
 	s.u = nil
 	s.privateKeys = nil
+	s.allReceivers = nil
 	return nil
 }
 
