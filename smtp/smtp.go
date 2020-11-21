@@ -425,7 +425,12 @@ func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (sm
 
 	log.Printf("%s logged in", username)
 
-	return &session{c, u, privateKeys, addrs}, nil
+	return &session{
+		c:           c,
+		u:           u,
+		privateKeys: privateKeys,
+		addrs:       addrs,
+	}, nil
 }
 
 func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
