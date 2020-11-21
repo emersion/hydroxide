@@ -38,18 +38,50 @@ func formatHeader(h mail.Header) string {
 }
 
 type session struct {
-	c           *protonmail.Client
-	u           *protonmail.User
-	privateKeys openpgp.EntityList
-	addrs       []*protonmail.Address
+	c            *protonmail.Client
+	u            *protonmail.User
+	privateKeys  openpgp.EntityList
+	addrs        []*protonmail.Address
+	allReceivers []*mail.Address
 }
 
 func (s *session) Mail(from string, options smtp.MailOptions) error {
 	return nil
 }
 
-func (s *session) Rcpt(to string) error {
-	return nil
+func (s *session) Rcpt(to string) (err error) {
+	log.Printf("Sending mail for %s", to)
+	if to == "" {
+		return
+	}
+
+	// Seems like github.com/emersion/go-smtp/conn.go:487 removes marks on message
+	split := strings.Split(to, " ")
+	ln := len(split)
+	name, to := strings.Join(split[:ln-1], " "), split[ln-1]
+
+	s.allReceivers = append(s.allReceivers, &mail.Address{
+		Name:    name,
+		Address: to,
+	})
+	return
+}
+
+func (s *session) bccFromRest(ignoreMails []*mail.Address) (final []*mail.Address) {
+	ignore := make(map[string]struct{})
+	for _, mail := range ignoreMails {
+		ignore[mail.Address] = struct{}{}
+	}
+
+	final = make([]*mail.Address, 0, len(s.allReceivers))
+	var exists bool
+	for _, mail := range s.allReceivers {
+		if _, exists = ignore[mail.Address]; exists {
+			continue
+		}
+		final = append(final, mail)
+	}
+	return
 }
 
 func (s *session) Data(r io.Reader) error {
