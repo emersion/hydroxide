@@ -137,6 +137,10 @@ func (s *session) Data(r io.Reader) error {
 		return errors.New("sender address key hasn't been decrypted")
 	}
 
+	if len(bccList) == 0 {
+		bccList = s.bccFromRest(append(toList, ccList...))
+	}
+
 	msg := &protonmail.Message{
 		ToList:    toPMAddressList(toList),
 		CCList:    toPMAddressList(ccList),
