@@ -1,9 +1,9 @@
 package exports
 
 import (
+	"bufio"
 	"fmt"
 	"io"
-	"bufio"
 	"strings"
 
 	"github.com/emersion/go-mbox"

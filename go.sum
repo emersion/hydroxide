@@ -8,6 +8,7 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/emersion/go-bcrypt v0.0.0-20170822072041-6e724a1baa63 h1:7aCSuwTBzg7BCPRRaBJD0weKZYdeAykOrY6ktpx8Vvc=
 github.com/emersion/go-bcrypt v0.0.0-20170822072041-6e724a1baa63/go.mod h1:eRwwJnuLVFtYTC+AI2JDJTMcuQUTYhBIK4I6bC5tpqw=
+github.com/emersion/go-ical v0.0.0-20200224201310-cd514449c39e h1:YGM1sI7edZOt8KAfX9Miq/X99d2QXdgjkJ7vN4HjxAA=
 github.com/emersion/go-ical v0.0.0-20200224201310-cd514449c39e/go.mod h1:4xVTBPcT43a1pp3vdaa+FuRdX5XhKCZPpWv7m0z9ByM=
 github.com/emersion/go-imap v1.0.5 h1:8xg/d2wo2BBP3AEP5AOaM/6i8887RGyVW2st/IVHWUw=
 github.com/emersion/go-imap v1.0.5/go.mod h1:yKASt+C3ZiDAiCSssxg9caIckWF/JG7ZQTO7GAmvicU=

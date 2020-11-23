@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/openpgp/armor"
 
 	"github.com/emersion/hydroxide/auth"
+	"github.com/emersion/hydroxide/caldav"
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/exports"
@@ -65,6 +66,49 @@ func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, even
 	s.Enable(imapmove.NewExtension())
 
 	log.Println("IMAP server listening on", s.Addr)
+	return s.ListenAndServe()
+}
+
+func listenAndServeCalDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager) error {
+	handlers := make(map[string]http.Handler)
+
+	s := &http.Server{
+		Addr: addr,
+		Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("WWW-Authenticate", "Basic")
+
+			username, password, ok := req.BasicAuth()
+			if !ok {
+				resp.WriteHeader(http.StatusUnauthorized)
+				io.WriteString(resp, "Credentials are required")
+				return
+			}
+
+			c, privateKeys, err := authManager.Auth(username, password)
+			if err != nil {
+				if err == auth.ErrUnauthorized {
+					resp.WriteHeader(http.StatusUnauthorized)
+				} else {
+					resp.WriteHeader(http.StatusInternalServerError)
+				}
+				io.WriteString(resp, err.Error())
+				return
+			}
+
+			h, ok := handlers[username]
+			if !ok {
+				ch := make(chan *protonmail.Event)
+				eventsManager.Register(c, username, ch, nil)
+				h = caldav.NewHandler(c, privateKeys, ch)
+
+				handlers[username] = h
+			}
+
+			h.ServeHTTP(resp, req)
+		}),
+	}
+
+	log.Println("CardDAV server listening on", s.Addr)
 	return s.ListenAndServe()
 }
 
@@ -388,6 +432,11 @@ func main() {
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager))
+	case "caldav":
+		addr := ":8080"
+		authManager := auth.NewManager(newClient)
+		eventsManager := events.NewManager()
+		log.Fatal(listenAndServeCalDAV(addr, authManager, eventsManager))
 	case "carddav":
 		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
