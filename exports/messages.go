@@ -1,9 +1,9 @@
 package exports
 
 import (
+	"bufio"
 	"fmt"
 	"io"
-	"bufio"
 	"strings"
 
 	"github.com/emersion/go-mbox"
@@ -28,7 +28,7 @@ func writeMessage(c *protonmail.Client, privateKeys openpgp.KeyRing, w io.Writer
 	}
 
 	mh := mail.Header{message.Header{th}}
-	mh.SetContentType(mimeType, nil)
+	mh.SetContentType(mimeType, map[string]string{"charset", "utf-8"})
 	mh.Set("Content-Transfer-Encoding", "quoted-printable")
 
 	// TODO: add support for attachments
