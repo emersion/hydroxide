@@ -38,10 +38,11 @@ func formatHeader(h mail.Header) string {
 }
 
 type session struct {
-	c           *protonmail.Client
-	u           *protonmail.User
-	privateKeys openpgp.EntityList
-	addrs       []*protonmail.Address
+	c            *protonmail.Client
+	u            *protonmail.User
+	privateKeys  openpgp.EntityList
+	addrs        []*protonmail.Address
+	allReceivers []string
 }
 
 func (s *session) Mail(from string, options smtp.MailOptions) error {
@@ -49,7 +50,32 @@ func (s *session) Mail(from string, options smtp.MailOptions) error {
 }
 
 func (s *session) Rcpt(to string) error {
+	if to == "" {
+		return nil
+	}
+
+	// Seems like github.com/emersion/go-smtp/conn.go:487 removes marks on message
+	// "to" is added into allReceivers blindly
+	s.allReceivers = append(s.allReceivers, to)
 	return nil
+}
+
+func (s *session) bccFromRest(ignoreMails []*mail.Address) []*mail.Address {
+	ignore := make(map[string]struct{})
+	for _, mail := range ignoreMails {
+		ignore[mail.Address] = struct{}{}
+	}
+
+	final := make([]*mail.Address, 0, len(s.allReceivers))
+	for _, addr := range s.allReceivers {
+		if _, exists := ignore[addr]; exists {
+			continue
+		}
+		final = append(final, &mail.Address{
+			Address: addr,
+		})
+	}
+	return final
 }
 
 func (s *session) Data(r io.Reader) error {
@@ -64,6 +90,10 @@ func (s *session) Data(r io.Reader) error {
 	toList, _ := mr.Header.AddressList("To")
 	ccList, _ := mr.Header.AddressList("Cc")
 	bccList, _ := mr.Header.AddressList("Bcc")
+
+	if len(bccList) == 0 {
+		bccList = s.bccFromRest(append(toList, ccList...))
+	}
 
 	if len(fromList) != 1 {
 		return errors.New("the From field must contain exactly one address")
@@ -353,12 +383,15 @@ func (s *session) Data(r io.Reader) error {
 	return nil
 }
 
-func (s *session) Reset() {}
+func (s *session) Reset() {
+	s.allReceivers = nil
+}
 
 func (s *session) Logout() error {
 	s.c = nil
 	s.u = nil
 	s.privateKeys = nil
+	s.allReceivers = nil
 	return nil
 }
 
@@ -386,7 +419,12 @@ func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (sm
 
 	log.Printf("%s logged in", username)
 
-	return &session{c, u, privateKeys, addrs}, nil
+	return &session{
+		c:           c,
+		u:           u,
+		privateKeys: privateKeys,
+		addrs:       addrs,
+	}, nil
 }
 
 func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
