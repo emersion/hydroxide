@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -109,6 +110,15 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 
 	log.Println("CardDAV server listening on", s.Addr)
 	return s.ListenAndServe()
+}
+
+func isMbox(br *bufio.Reader) (bool, error) {
+	prefix := []byte("From ")
+	b, err := br.Peek(len(prefix))
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(b, prefix), nil
 }
 
 const usage = `usage: hydroxide [options...] <command>
@@ -308,8 +318,6 @@ func main() {
 			log.Fatal(err)
 		}
 	case "import-messages":
-		// TODO: support for mbox
-
 		importMessagesCmd.Parse(flag.Args()[1:])
 		username := importMessagesCmd.Arg(0)
 		archivePath := importMessagesCmd.Arg(1)
@@ -336,8 +344,26 @@ func main() {
 			log.Fatal(err)
 		}
 
-		if err := imports.ImportMessage(c, f); err != nil {
+		br := bufio.NewReader(f)
+		if ok, err := isMbox(br); err != nil {
 			log.Fatal(err)
+		} else if ok {
+			mr := mbox.NewReader(br)
+			for {
+				r, err := mr.NextMessage()
+				if err == io.EOF {
+					break
+				} else if err != nil {
+					log.Fatal(err)
+				}
+				if err := imports.ImportMessage(c, r); err != nil {
+					log.Fatal(err)
+				}
+			}
+		} else {
+			if err := imports.ImportMessage(c, f); err != nil {
+				log.Fatal(err)
+			}
 		}
 	case "export-messages":
 		// TODO: allow specifying multiple IDs
