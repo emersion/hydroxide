@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-smtp"
@@ -38,6 +39,7 @@ func formatHeader(h mail.Header) string {
 }
 
 type session struct {
+	backend      *backend
 	c            *protonmail.Client
 	u            *protonmail.User
 	privateKeys  openpgp.EntityList
@@ -159,11 +161,22 @@ func (s *session) Data(r io.Reader) error {
 		return err
 	}
 
-	parentID := ""
-	inReplyToList, _ := mr.Header.AddressList("In-Reply-To")
+	inReplyTo := ""
+	inReplyToList, _ := mr.Header.MsgIDList("In-Reply-To")
 	if len(inReplyToList) == 1 {
-		inReplyTo := inReplyToList[0].Address
+		inReplyTo = inReplyToList[0]
+	}
 
+	parentID := ""
+	if inReplyTo != "" {
+		// The clients might send a chain of messages with In-Reply-To set for
+		// previous Message-Ids. ProtonMail drops client-provided Message-Ids,
+		// so keep track of those and do the conversion here.
+		s.backend.lock.Lock()
+		parentID = s.backend.sentIDs[inReplyTo]
+		s.backend.lock.Unlock()
+	}
+	if inReplyTo != "" && parentID == "" {
 		filter := protonmail.MessageFilter{
 			Limit:      1,
 			ExternalID: inReplyTo,
@@ -181,6 +194,14 @@ func (s *session) Data(r io.Reader) error {
 	msg, err = s.c.CreateDraftMessage(msg, parentID)
 	if err != nil {
 		return fmt.Errorf("cannot create draft message: %v", err)
+	}
+
+	if msgID, err := mr.Header.MessageID(); err != nil {
+		log.Printf("failed to parse Message-Id: %v", err)
+	} else if msgID != "" {
+		s.backend.lock.Lock()
+		s.backend.sentIDs[msgID] = msg.ID
+		s.backend.lock.Unlock()
 	}
 
 	// Parse the incoming MIME message body
@@ -397,6 +418,10 @@ func (s *session) Logout() error {
 
 type backend struct {
 	sessions *auth.Manager
+
+	lock sync.Mutex
+	// Map of client-provided Message-Ids → ProtonMail message IDs
+	sentIDs map[string]string
 }
 
 func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (smtp.Session, error) {
@@ -420,6 +445,7 @@ func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (sm
 	log.Printf("%s logged in", username)
 
 	return &session{
+		backend:     be,
 		c:           c,
 		u:           u,
 		privateKeys: privateKeys,
@@ -432,5 +458,8 @@ func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error)
 }
 
 func New(sessions *auth.Manager) smtp.Backend {
-	return &backend{sessions}
+	return &backend{
+		sessions: sessions,
+		sentIDs:  make(map[string]string),
+	}
 }
