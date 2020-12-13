@@ -97,6 +97,20 @@ For now, it only supports unencrypted local connections.
 hydroxide imap
 ```
 
+## Docker
+
+### Building the image
+
+Image can be built by simply running `docker build .` in the root directory. It's suggested you nominate a `--tag` for convenient use.
+
+### Running the image
+
+On first run the image requires your Protonmail logon, secret, and two factor authentication token. The parameters can be passed in by supplementing the `docker run` command with the environment options `-e USERNAME= -e PASSWORD= -e TOKEN=`. For convenience it's recommended that the volume specified in the container is mapped to a secured directory on the host machine, this ensures that the container will retain a copy of any access tokens it has created in the past.
+
+### Accessing the services
+
+A big warning against simply applying `--network host` and accessing via public internet. This will expose your credentials, as well as any mail contents. If using remotely, consider a reverse proxy or SSH port forwarding for your use case.
+
 ## License
 
 MIT
