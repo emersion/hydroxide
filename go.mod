@@ -1,6 +1,6 @@
 module github.com/emersion/hydroxide
 
-go 1.13
+go 1.15
 
 require (
 	github.com/boltdb/bolt v1.3.1
