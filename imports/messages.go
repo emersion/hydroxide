@@ -81,13 +81,25 @@ func ImportMessage(c *protonmail.Client, r io.Reader) error {
 		return err
 	}
 
-	mwc, err := mail.CreateSingleInlineWriter(w, hdr)
+	var ihdr mail.InlineHeader
+	ihdr.Set("Content-Type", hdr.Get("Content-Type"))
+	ihdr.Set("Content-Transfer-Encoding", "8bit")
+
+	hdr.Del("Content-Type")
+	hdr.Del("Content-Transfer-Encoding")
+	hdr.Del("Content-Disposition")
+	mwc, err := mail.CreateWriter(w, hdr)
 	if err != nil {
 		return err
 	}
 	defer mwc.Close()
 
-	awc, err := armor.Encode(mwc, "PGP MESSAGE", nil)
+	iwc, err := mwc.CreateSingleInline(ihdr)
+	if err != nil {
+		return err
+	}
+
+	awc, err := armor.Encode(iwc, "PGP MESSAGE", nil)
 	if err != nil {
 		return err
 	}
@@ -105,6 +117,9 @@ func ImportMessage(c *protonmail.Client, r io.Reader) error {
 		return err
 	}
 	if err := awc.Close(); err != nil {
+		return err
+	}
+	if err := iwc.Close(); err != nil {
 		return err
 	}
 	if err := mwc.Close(); err != nil {
