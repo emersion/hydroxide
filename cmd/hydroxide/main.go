@@ -361,7 +361,7 @@ func main() {
 				}
 			}
 		} else {
-			if err := imports.ImportMessage(c, f); err != nil {
+			if err := imports.ImportMessage(c, br); err != nil {
 				log.Fatal(err)
 			}
 		}
