@@ -62,7 +62,7 @@ func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
 func (mbox *mailbox) Status(items []imap.StatusItem) (*imap.MailboxStatus, error) {
 	mbox.u.Lock()
 	flags := []string{imap.SeenFlag, imap.DeletedFlag}
-	permFlags := []string{imap.SeenFlag}
+	permFlags := []string{imap.SeenFlag, imap.DeletedFlag}
 	for _, flag := range mbox.u.flags {
 		flags = append(flags, flag)
 		permFlags = append(permFlags, flag)
@@ -550,8 +550,14 @@ func (mbox *mailbox) Expunge() error {
 		return err
 	}
 
-	apiIDs := make([]string, 0, len(mbox.deleted))
 	mbox.Lock()
+	if len(mbox.deleted) == 0 {
+		mbox.Unlock()
+		return nil // Nothing to do
+	}
+
+	apiIDs := make([]string, 0, len(mbox.deleted))
+
 	for apiID := range mbox.deleted {
 		apiIDs = append(apiIDs, apiID)
 	}
