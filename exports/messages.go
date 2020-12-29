@@ -6,11 +6,11 @@ import (
 	"io"
 	"strings"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-message/textproto"
-	"golang.org/x/crypto/openpgp"
 
 	"github.com/emersion/hydroxide/protonmail"
 )

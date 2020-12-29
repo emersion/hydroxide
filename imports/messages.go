@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/emersion/go-message/mail"
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/armor"
 
 	"github.com/emersion/hydroxide/protonmail"
 )
