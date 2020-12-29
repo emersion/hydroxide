@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"golang.org/x/crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp"
 
 	"log"
 )

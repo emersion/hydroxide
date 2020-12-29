@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/emersion/go-vcard"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/emersion/hydroxide/protonmail"
-	"golang.org/x/crypto/openpgp"
 )
 
 // TODO: use a HTTP error

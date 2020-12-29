@@ -11,14 +11,14 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	imapmove "github.com/emersion/go-imap-move"
 	imapspacialuse "github.com/emersion/go-imap-specialuse"
 	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-smtp"
 	"github.com/howeyc/gopass"
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/armor"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
