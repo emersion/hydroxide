@@ -227,7 +227,7 @@ func messageHeader(msg *protonmail.Message) message.Header {
 		h.SetAddressList("Bcc", mailAddressList(msg.BCCList))
 	}
 	// TODO: In-Reply-To
-	h.Set("Message-Id", messageID(msg))
+	h.Set("Message-Id", fmt.Sprintf("<%s>", messageID(msg)))
 	return h.Header
 }
 
