@@ -2,6 +2,8 @@ package imap
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -80,6 +82,11 @@ func fetchEnvelope(msg *protonmail.Message) *imap.Envelope {
 	}
 }
 
+func msgBoundary(msg *protonmail.Message) string {
+	h := sha1.Sum([]byte(msg.ID))
+	return hex.EncodeToString(h[:])
+}
+
 func hasLabel(msg *protonmail.Message, labelID string) bool {
 	for _, id := range msg.LabelIDs {
 		if labelID == id {
@@ -139,7 +146,7 @@ func (mbox *mailbox) fetchBodyStructure(msg *protonmail.Message, extended bool) 
 	return &imap.BodyStructure{
 		MIMEType:    "multipart",
 		MIMESubType: "mixed",
-		// TODO: Params: map[string]string{"boundary": ...},
+		Params:      map[string]string{"boundary": msgBoundary(msg)},
 		// TODO: Size
 		Parts:    parts,
 		Extended: extended,
@@ -209,8 +216,10 @@ func mailAddressList(addresses []*protonmail.MessageAddress) []*mail.Address {
 }
 
 func messageHeader(msg *protonmail.Message) message.Header {
+	typeParams := map[string]string{"boundary": msgBoundary(msg)}
+
 	var h mail.Header
-	h.SetContentType("multipart/mixed", nil)
+	h.SetContentType("multipart/mixed", typeParams)
 	h.SetDate(msg.Time.Time())
 	h.SetSubject(msg.Subject)
 	h.SetAddressList("From", []*mail.Address{mailAddress(msg.Sender)})
