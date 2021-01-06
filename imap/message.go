@@ -237,6 +237,12 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 	b := new(bytes.Buffer)
 
 	if len(section.Path) == 0 {
+		// Need to get full message so that ReplyTos are fetched
+		msg, err := mbox.u.c.GetMessage(msg.ID)
+		if err != nil {
+			return nil, err
+		}
+
 		w, err := message.CreateWriter(b, messageHeader(msg))
 		if err != nil {
 			return nil, err
@@ -248,11 +254,6 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 
 		switch section.Specifier {
 		case imap.EntireSpecifier, imap.TextSpecifier:
-			msg, err := mbox.u.c.GetMessage(msg.ID)
-			if err != nil {
-				return nil, err
-			}
-
 			pw, err := w.CreatePart(inlineHeader(msg))
 			if err != nil {
 				return nil, err
