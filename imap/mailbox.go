@@ -118,7 +118,7 @@ func (mbox *mailbox) sync() error {
 	}
 
 	filter := &protonmail.MessageFilter{
-		PageSize: protonmail.PageSize,
+		PageSize: protonmail.MaxMessagePageSize,
 		Label:    mbox.label,
 		Sort:     "ID",
 		Asc:      true,
@@ -456,9 +456,9 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 	// TODO: imap.SetFlags should remove currently set flags
 	// ProtonMail's server enforces a 150 messages limit per request
 	g := new(errgroup.Group)
-	for i := 0; i < len(apiIDs); i += protonmail.PageSize {
-		var upperBound int = i + protonmail.PageSize
-		if len(apiIDs) < i+protonmail.PageSize {
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
 			upperBound = len(apiIDs)
 		}
 		apiIDsSlice := apiIDs[i:upperBound]
@@ -525,9 +525,9 @@ func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 	}
 
 	g := new(errgroup.Group)
-	for i := 0; i < len(apiIDs); i += protonmail.PageSize {
-		var upperBound int = i + protonmail.PageSize
-		if len(apiIDs) < i+protonmail.PageSize {
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
 			upperBound = len(apiIDs)
 		}
 		apiIDsSlice := apiIDs[i:upperBound]
@@ -556,9 +556,9 @@ func (mbox *mailbox) MoveMessages(uid bool, seqSet *imap.SeqSet, destName string
 	}
 
 	g := new(errgroup.Group)
-	for i := 0; i < len(apiIDs); i += protonmail.PageSize {
-		var upperBound int = i + protonmail.PageSize
-		if len(apiIDs) < i+protonmail.PageSize {
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
 			upperBound = len(apiIDs)
 		}
 		apiIDsSlice := apiIDs[i:upperBound]
@@ -591,9 +591,9 @@ func (mbox *mailbox) Expunge() error {
 	mbox.Unlock()
 
 	g := new(errgroup.Group)
-	for i := 0; i < len(apiIDs); i += protonmail.PageSize {
-		var upperBound int = i + protonmail.PageSize
-		if len(apiIDs) < i+protonmail.PageSize {
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
 			upperBound = len(apiIDs)
 		}
 		apiIDsSlice := apiIDs[i:upperBound]
