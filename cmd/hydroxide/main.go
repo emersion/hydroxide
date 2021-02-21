@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
+	"github.com/emersion/hydroxide/config"
 	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/exports"
 	imapbackend "github.com/emersion/hydroxide/imap"
@@ -39,25 +41,32 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager) error {
+func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsConfig *tls.Config) error {
 	be := smtpbackend.New(authManager)
 	s := smtp.NewServer(be)
 	s.Addr = addr
-	s.Domain = "localhost"     // TODO: make this configurable
-	s.AllowInsecureAuth = true // TODO: remove this
+	s.Domain = "localhost" // TODO: make this configurable
+	// s.AllowInsecureAuth = true // TODO: remove this
+	s.TLSConfig = tlsConfig
 	if debug {
 		s.Debug = os.Stdout
+	}
+
+	if s.TLSConfig != nil {
+		log.Println("SMTP server listening with TLS on", s.Addr)
+		return s.ListenAndServeTLS()
 	}
 
 	log.Println("SMTP server listening on", s.Addr)
 	return s.ListenAndServe()
 }
 
-func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, eventsManager *events.Manager) error {
+func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config) error {
 	be := imapbackend.New(authManager, eventsManager)
 	s := imapserver.New(be)
 	s.Addr = addr
-	s.AllowInsecureAuth = true // TODO: remove this
+	// s.AllowInsecureAuth = true // TODO: remove this
+	s.TLSConfig = tlsConfig
 	if debug {
 		s.Debug = os.Stdout
 	}
@@ -65,15 +74,21 @@ func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, even
 	s.Enable(imapspacialuse.NewExtension())
 	s.Enable(imapmove.NewExtension())
 
+	if s.TLSConfig != nil {
+		log.Println("IMAP server listening with TLS on", s.Addr)
+		return s.ListenAndServeTLS()
+	}
+
 	log.Println("IMAP server listening on", s.Addr)
 	return s.ListenAndServe()
 }
 
-func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager) error {
+func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config) error {
 	handlers := make(map[string]http.Handler)
 
 	s := &http.Server{
-		Addr: addr,
+		Addr:      addr,
+		TLSConfig: tlsConfig,
 		Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 			resp.Header().Set("WWW-Authenticate", "Basic")
 
@@ -106,6 +121,11 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 
 			h.ServeHTTP(resp, req)
 		}),
+	}
+
+	if s.TLSConfig != nil {
+		log.Println("CardDAV server listening with TLS on", s.Addr)
+		return s.ListenAndServeTLS("", "")
 	}
 
 	log.Println("CardDAV server listening on", s.Addr)
@@ -147,7 +167,13 @@ Global options:
 	-imap-port example.com
 		IMAP port on which hydroxide listens, defaults to 1143
 	-carddav-port example.com
-		CardDAV port on which hydroxide listens, defaults to 8080`
+		CardDAV port on which hydroxide listens, defaults to 8080
+	-tls-cert /path/to/cert.pem
+		Path to the certificate to use for incoming connections (Optional)
+	-tls-key /path/to/key.pem
+		Path to the certificate key to use for incoming connections (Optional)
+	-tls-client-ca /path/to/ca.pem
+		If set, clients must provide a certificate signed by the given CA (Optional)`
 
 func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug logs")
@@ -161,12 +187,21 @@ func main() {
 	carddavHost := flag.String("carddav-host", "127.0.0.1", "Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	carddavPort := flag.String("carddav-port", "8080", "CardDAV port on which hydroxide listens, defaults to 8080")
 
+	tlsCert := flag.String("tls-cert", "", "Path to the certificate to use for incoming connections")
+	tlsCertKey := flag.String("tls-key", "", "Path to the certificate key to use for incoming connections")
+	tlsClientCA := flag.String("tls-client-ca", "", "If set, clients must provide a certificate signed by the given CA")
+
 	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
 	importMessagesCmd := flag.NewFlagSet("import-messages", flag.ExitOnError)
 	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
 
 	flag.Parse()
+
+	tlsConfig, err := config.TLS(*tlsCert, *tlsCertKey, *tlsClientCA)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	cmd := flag.Arg(0)
 	switch cmd {
@@ -408,17 +443,17 @@ func main() {
 	case "smtp":
 		addr := *smtpHost + ":" + *smtpPort
 		authManager := auth.NewManager(newClient)
-		log.Fatal(listenAndServeSMTP(addr, debug, authManager))
+		log.Fatal(listenAndServeSMTP(addr, debug, authManager, tlsConfig))
 	case "imap":
 		addr := *imapHost + ":" + *imapPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager))
+		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager, tlsConfig))
 	case "carddav":
 		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager))
+		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager, tlsConfig))
 	case "serve":
 		smtpAddr := *smtpHost + ":" + *smtpPort
 		imapAddr := *imapHost + ":" + *imapPort
@@ -429,13 +464,13 @@ func main() {
 
 		done := make(chan error, 3)
 		go func() {
-			done <- listenAndServeSMTP(smtpAddr, debug, authManager)
+			done <- listenAndServeSMTP(smtpAddr, debug, authManager, tlsConfig)
 		}()
 		go func() {
-			done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager)
+			done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig)
 		}()
 		go func() {
-			done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager)
+			done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager, tlsConfig)
 		}()
 		log.Fatal(<-done)
 	default:
