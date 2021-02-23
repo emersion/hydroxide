@@ -166,6 +166,10 @@ func main() {
 	importMessagesCmd := flag.NewFlagSet("import-messages", flag.ExitOnError)
 	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
 
+	flag.Usage = func() {
+		fmt.Println(usage)
+	}
+
 	flag.Parse()
 
 	cmd := flag.Arg(0)
@@ -439,7 +443,7 @@ func main() {
 		}()
 		log.Fatal(<-done)
 	default:
-		log.Println(usage)
+		fmt.Println(usage)
 		if cmd != "help" {
 			log.Fatal("Unrecognized command")
 		}
