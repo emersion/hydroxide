@@ -8,22 +8,10 @@ import (
 )
 
 func TLS(certPath string, keyPath string, clientCAPath string) (*tls.Config, error) {
-
 	tlsConfig := &tls.Config{}
 
 	if certPath != "" && keyPath != "" {
-
-		certData, err := ioutil.ReadFile(certPath)
-		if err != nil {
-			return nil, fmt.Errorf("error: unable read certificate: %s", err)
-		}
-
-		keyData, err := ioutil.ReadFile(keyPath)
-		if err != nil {
-			return nil, fmt.Errorf("error: unable read key: %s", err)
-		}
-
-		cert, err := tls.X509KeyPair(certData, keyData)
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("error: unable load key pair: %s", err)
 		}
@@ -32,7 +20,6 @@ func TLS(certPath string, keyPath string, clientCAPath string) (*tls.Config, err
 	}
 
 	if clientCAPath != "" {
-
 		data, err := ioutil.ReadFile(clientCAPath)
 		if err != nil {
 			return nil, fmt.Errorf("error: unable read CA file: %s", err)

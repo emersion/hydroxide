@@ -46,7 +46,7 @@ func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsC
 	s := smtp.NewServer(be)
 	s.Addr = addr
 	s.Domain = "localhost" // TODO: make this configurable
-	// s.AllowInsecureAuth = true // TODO: remove this
+	s.AllowInsecureAuth = tlsConfig == nil
 	s.TLSConfig = tlsConfig
 	if debug {
 		s.Debug = os.Stdout
@@ -65,7 +65,7 @@ func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, even
 	be := imapbackend.New(authManager, eventsManager)
 	s := imapserver.New(be)
 	s.Addr = addr
-	// s.AllowInsecureAuth = true // TODO: remove this
+	s.AllowInsecureAuth = tlsConfig == nil
 	s.TLSConfig = tlsConfig
 	if debug {
 		s.Debug = os.Stdout
