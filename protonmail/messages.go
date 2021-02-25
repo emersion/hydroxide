@@ -15,6 +15,9 @@ import (
 	"golang.org/x/crypto/openpgp/packet"
 )
 
+// MaxMessagePageSize are enforced by the ProtonMail server for all message operations
+const MaxMessagePageSize = 150
+
 type MessageType int
 
 const (

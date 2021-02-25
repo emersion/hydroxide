@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/emersion/go-imap"
 	imapbackend "github.com/emersion/go-imap/backend"
 
@@ -116,7 +118,7 @@ func (mbox *mailbox) sync() error {
 	}
 
 	filter := &protonmail.MessageFilter{
-		PageSize: 150,
+		PageSize: protonmail.MaxMessagePageSize,
 		Label:    mbox.label,
 		Sort:     "ID",
 		Asc:      true,
@@ -452,49 +454,56 @@ func (mbox *mailbox) UpdateMessagesFlags(uid bool, seqSet *imap.SeqSet, op imap.
 	}
 
 	// TODO: imap.SetFlags should remove currently set flags
-
-	for _, flag := range flags {
-		var err error
-		switch flag {
-		case imap.SeenFlag:
-			switch op {
-			case imap.SetFlags, imap.AddFlags:
-				err = mbox.u.c.MarkMessagesRead(apiIDs)
-			case imap.RemoveFlags:
-				err = mbox.u.c.MarkMessagesUnread(apiIDs)
-			}
-		case imap.DeletedFlag:
-			// TODO: send updates
-			mbox.Lock()
-			switch op {
-			case imap.SetFlags, imap.AddFlags:
-				for _, apiID := range apiIDs {
-					mbox.deleted[apiID] = struct{}{}
+	// ProtonMail's server enforces a 150 messages limit per request
+	g := new(errgroup.Group)
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
+			upperBound = len(apiIDs)
+		}
+		apiIDsSlice := apiIDs[i:upperBound]
+		for _, flag := range flags {
+			switch flag {
+			case imap.SeenFlag:
+				switch op {
+				case imap.SetFlags, imap.AddFlags:
+					g.Go(func() error { return mbox.u.c.MarkMessagesRead(apiIDsSlice) })
+				case imap.RemoveFlags:
+					g.Go(func() error { return mbox.u.c.MarkMessagesUnread(apiIDsSlice) })
 				}
-			case imap.RemoveFlags:
-				for _, apiID := range apiIDs {
-					delete(mbox.deleted, apiID)
+			case imap.DeletedFlag:
+				// TODO: send updates
+				mbox.Lock()
+				switch op {
+				case imap.SetFlags, imap.AddFlags:
+					for _, apiID := range apiIDs {
+						mbox.deleted[apiID] = struct{}{}
+					}
+				case imap.RemoveFlags:
+					for _, apiID := range apiIDs {
+						delete(mbox.deleted, apiID)
+					}
 				}
-			}
-			mbox.Unlock()
-		case imap.DraftFlag:
-			// No-op
-		default:
-			label := mbox.u.getFlag(flag)
-			if label == "" {
-				break
-			}
+				mbox.Unlock()
+			case imap.DraftFlag:
+				// No-op
+			default:
+				label := mbox.u.getFlag(flag)
+				if label == "" {
+					break
+				}
 
-			switch op {
-			case imap.SetFlags, imap.AddFlags:
-				err = mbox.u.c.LabelMessages(label, apiIDs)
-			case imap.RemoveFlags:
-				err = mbox.u.c.UnlabelMessages(label, apiIDs)
+				switch op {
+				case imap.SetFlags, imap.AddFlags:
+					g.Go(func() error { return mbox.u.c.LabelMessages(label, apiIDsSlice) })
+				case imap.RemoveFlags:
+					g.Go(func() error { return mbox.u.c.UnlabelMessages(label, apiIDsSlice) })
+				}
 			}
 		}
-		if err != nil {
-			return err
-		}
+	}
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	return mbox.Poll()
@@ -515,9 +524,19 @@ func (mbox *mailbox) CopyMessages(uid bool, seqSet *imap.SeqSet, destName string
 		return imapbackend.ErrNoSuchMailbox
 	}
 
-	if err := mbox.u.c.LabelMessages(dest.label, apiIDs); err != nil {
+	g := new(errgroup.Group)
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
+			upperBound = len(apiIDs)
+		}
+		apiIDsSlice := apiIDs[i:upperBound]
+		g.Go(func() error { return mbox.u.c.LabelMessages(dest.label, apiIDsSlice) })
+	}
+	if err := g.Wait(); err != nil {
 		return err
 	}
+
 	return mbox.Poll()
 }
 
@@ -536,12 +555,20 @@ func (mbox *mailbox) MoveMessages(uid bool, seqSet *imap.SeqSet, destName string
 		return imapbackend.ErrNoSuchMailbox
 	}
 
-	if err := mbox.u.c.LabelMessages(dest.label, apiIDs); err != nil {
+	g := new(errgroup.Group)
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
+			upperBound = len(apiIDs)
+		}
+		apiIDsSlice := apiIDs[i:upperBound]
+		g.Go(func() error { return mbox.u.c.LabelMessages(dest.label, apiIDsSlice) })
+		g.Go(func() error { return mbox.u.c.UnlabelMessages(mbox.label, apiIDsSlice) })
+	}
+	if err := g.Wait(); err != nil {
 		return err
 	}
-	if err := mbox.u.c.UnlabelMessages(mbox.label, apiIDs); err != nil {
-		return err
-	}
+
 	return mbox.Poll()
 }
 
@@ -563,7 +590,16 @@ func (mbox *mailbox) Expunge() error {
 	}
 	mbox.Unlock()
 
-	if err := mbox.u.c.DeleteMessages(apiIDs); err != nil {
+	g := new(errgroup.Group)
+	for i := 0; i < len(apiIDs); i += protonmail.MaxMessagePageSize {
+		upperBound := i + protonmail.MaxMessagePageSize
+		if len(apiIDs) < i+protonmail.MaxMessagePageSize {
+			upperBound = len(apiIDs)
+		}
+		apiIDsSlice := apiIDs[i:upperBound]
+		g.Go(func() error { return mbox.u.c.DeleteMessages(apiIDsSlice) })
+	}
+	if err := g.Wait(); err != nil {
 		return err
 	}
 
