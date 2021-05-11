@@ -168,6 +168,12 @@ Global options:
 		IMAP port on which hydroxide listens, defaults to 1143
 	-carddav-port example.com
 		CardDAV port on which hydroxide listens, defaults to 8080
+	-disable-imap
+		Disable IMAP for hydroxide serve
+	-disable-smtp
+		Disable SMTP for hydroxide serve
+	-disable-carddav
+		Disable CardDAV for hydroxide serve
 	-tls-cert /path/to/cert.pem
 		Path to the certificate to use for incoming connections (Optional)
 	-tls-key /path/to/key.pem
@@ -180,12 +186,15 @@ func main() {
 
 	smtpHost := flag.String("smtp-host", "127.0.0.1", "Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	smtpPort := flag.String("smtp-port", "1025", "SMTP port on which hydroxide listens, defaults to 1025")
+	disableSMTP := flag.Bool("disable-smtp", false, "Disable SMTP for hydroxide serve")
 
 	imapHost := flag.String("imap-host", "127.0.0.1", "Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	imapPort := flag.String("imap-port", "1143", "IMAP port on which hydroxide listens, defaults to 1143")
+	disableIMAP := flag.Bool("disable-imap", false, "Disable IMAP for hydroxide serve")
 
 	carddavHost := flag.String("carddav-host", "127.0.0.1", "Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	carddavPort := flag.String("carddav-port", "8080", "CardDAV port on which hydroxide listens, defaults to 8080")
+	disableCardDAV := flag.Bool("disable-carddav", false, "Disable CardDAV for hydroxide serve")
 
 	tlsCert := flag.String("tls-cert", "", "Path to the certificate to use for incoming connections")
 	tlsCertKey := flag.String("tls-key", "", "Path to the certificate key to use for incoming connections")
@@ -467,15 +476,21 @@ func main() {
 		eventsManager := events.NewManager()
 
 		done := make(chan error, 3)
-		go func() {
-			done <- listenAndServeSMTP(smtpAddr, debug, authManager, tlsConfig)
-		}()
-		go func() {
-			done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig)
-		}()
-		go func() {
-			done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager, tlsConfig)
-		}()
+		if !*disableSMTP {
+			go func() {
+				done <- listenAndServeSMTP(smtpAddr, debug, authManager, tlsConfig)
+			}()
+		}
+		if !*disableIMAP {
+			go func() {
+				done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig)
+			}()
+		}
+		if !*disableCardDAV {
+			go func() {
+				done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager, tlsConfig)
+			}()
+		}
 		log.Fatal(<-done)
 	default:
 		fmt.Println(usage)
