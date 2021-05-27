@@ -511,6 +511,11 @@ func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp
 					return
 				}
 				pw.CloseWithError(cleartext.Close())
+
+				att.Signature, err = cleartext.Signature()
+				if err != nil {
+					log.Printf("no attachment signature available: %v\n", err)
+				}
 			}()
 
 			att, err = c.CreateAttachment(att, pr)

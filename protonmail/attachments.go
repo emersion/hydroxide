@@ -75,20 +75,33 @@ func (att *Attachment) GenerateKey(to []*openpgp.Entity) (*packet.EncryptedKey, 
 // GenerateKey.
 //
 // signed is ignored for now.
-func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cleartext io.WriteCloser, err error) {
+func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cleartext SignatureWriteCloser, err error) {
 	config := &packet.Config{}
 
 	if att.unencryptedKey == nil {
 		return nil, errors.New("cannot encrypt attachment: no attachment key available")
 	}
 
-	// TODO: sign and store signature in att.Signature
+	var signer *packet.PrivateKey
+	if signed != nil {
+		signKey, ok := signingKey(signed, config.Now())
+		if !ok {
+			return nil, errors.New("no valid signing keys")
+		}
+		signer = signKey.PrivateKey
+		if signer == nil {
+			return nil, errors.New("no private key in signing key")
+		}
+		if signer.Encrypted {
+			return nil, errors.New("signing key must be decrypted")
+		}
+	}
 
 	hints := &openpgp.FileHints{
 		IsBinary: true,
 		FileName: att.Name,
 	}
-	return symetricallyEncrypt(ciphertext, att.unencryptedKey, nil, hints, config)
+	return symmetricallyEncrypt(ciphertext, att.unencryptedKey, signer, hints, config)
 }
 
 func (att *Attachment) Read(ciphertext io.Reader, keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
@@ -173,7 +186,15 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 			return
 		}
 
-		// TODO: Signature
+		if len(att.Signature) != 0 {
+			if w, err := mw.CreateFormFile("Signature", "blob"); err != nil {
+				pw.CloseWithError(err)
+				return
+			} else if _, err := io.WriteString(w, att.Signature); err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+		}
 
 		pw.CloseWithError(mw.Close())
 	}()

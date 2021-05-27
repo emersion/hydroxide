@@ -473,15 +473,18 @@ func (set *MessagePackageSet) Encrypt(mimeType string, signed *openpgp.Entity) (
 		if signer.Encrypted {
 			return nil, errors.New("signing key must be decrypted")
 		}
-		set.signature = 1
 	}
 
 	encoded := new(bytes.Buffer)
 	ciphertext := base64.NewEncoder(base64.StdEncoding, encoded)
 
-	cleartext, err := symetricallyEncrypt(ciphertext, key, signer, nil, config)
+	cleartext, err := symmetricallyEncrypt(ciphertext, key, signer, nil, config)
 	if err != nil {
 		return nil, err
+	}
+
+	if signer != nil {
+		set.signature = 1
 	}
 
 	return &outgoingMessageWriter{
