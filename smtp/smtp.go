@@ -17,6 +17,8 @@ import (
 	"github.com/emersion/hydroxide/protonmail"
 )
 
+import _ "github.com/emersion/go-message/charset"
+
 func toPMAddressList(addresses []*mail.Address) []*protonmail.MessageAddress {
 	l := make([]*protonmail.MessageAddress, len(addresses))
 	for i, addr := range addresses {
