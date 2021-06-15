@@ -11,7 +11,7 @@ Rationale:
 * Standard-compliant (we don't care about Microsoft Outlook)
 * Fully open-source
 
-Feel free to join the IRC channel: ##emersion on irc.freenode.net.
+Feel free to join the IRC channel: #emersion on Libera Chat.
 
 ## How does it work?
 
