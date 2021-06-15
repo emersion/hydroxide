@@ -41,7 +41,18 @@ git clone https://github.com/emersion/hydroxide.git
 GO111MODULE=on go build ./cmd/hydroxide
 ```
 
-Then you'll need to login to ProtonMail via hydroxide, so that hydroxide can
+#### Community Packages
+
+These are **unofficial** packages provided by community members to ease the
+installation process.
+
+* Arch Linux (AUR):
+[hydroxide](https://aur.archlinux.org/packages/hydroxide),
+[hydroxide-git](https://aur.archlinux.org/packages/hydroxide-git)
+
+### Account Setup
+
+Now you'll need to login to ProtonMail via hydroxide, so that hydroxide can
 retrieve e-mails from ProtonMail. You can do so with this command:
 
 ```shell
