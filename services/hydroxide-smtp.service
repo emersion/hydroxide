@@ -1,0 +1,22 @@
+[Unit]
+Description=Third party ProtonMail SMTP Bridge
+After=network.target
+
+[Service]
+Type=exec
+User=hydroxide
+Group=hydroxide
+Restart=on-failure
+ExecStart=/usr/bin/hydroxide smtp
+
+ProtectHome=true
+ProtectSystem=full
+PrivateDevices=true
+NoNewPrivileges=true
+PrivateTmp=true
+InaccessibleDirectories=/root /sys /srv -/opt /media -/lost+found
+ReadWriteDirectories=/var/lib/hydroxide
+WorkingDirectory=/var/lib/hydroxide
+
+[Install]
+WantedBy=multi-user.target
