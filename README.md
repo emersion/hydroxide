@@ -3,8 +3,6 @@
 A third-party, open-source ProtonMail bridge. For power users only, designed to
 run on a server.
 
-hydroxide supports CardDAV, IMAP and SMTP.
-
 Rationale:
 
 * No GUI, only a CLI (so it runs in headless environments)
@@ -12,6 +10,16 @@ Rationale:
 * Fully open-source
 
 Feel free to join the IRC channel: #emersion on Libera Chat.
+
+Features:
+
+* No X11 dependencies
+* CardDav
+* IMAP
+* SMTP
+* Specify custom hostname(s)
+* Specify custom port(s)
+* MIT Licensed
 
 ## How does it work?
 
