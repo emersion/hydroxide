@@ -25,6 +25,14 @@ and `git-send-email` with ProtonMail.
     |                 |             |             |              |              |
     +-----------------+             +-------------+              +--------------+
 
+#### Can this be used to send email encrypted with a key that is unknown to ProtonMail?
+
+No, ProtonMail doesn't allow encryption via your own keys in Enigmail / Gnupg client.  Just like in ProtonMail's Bridge app, you will get an error when trying to send email that has already been encrypted with a PGP key they don't recognize:
+
+> 554 5.0.0 Error: transaction failed, blame it on the weather: cannot upload attachment: [11101] Invalid input. Please check the message and try again.
+
+If you [provide ProtonMail with the private key](https://protonmail.com/support/knowledge-base/pgp-key-management/) through your account (not recommended), it may work, however this has not been tested.
+
 ## Setup
 
 ### Go
