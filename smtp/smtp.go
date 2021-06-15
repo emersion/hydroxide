@@ -254,6 +254,11 @@ func (s *session) Data(r io.Reader) error {
 					return
 				}
 				pw.CloseWithError(cleartext.Close())
+
+				att.Signature, err = cleartext.Signature()
+				if err != nil {
+					log.Printf("no attachment signature available: %v\n", err)
+				}
 			}()
 
 			att, err = s.c.CreateAttachment(att, pr)

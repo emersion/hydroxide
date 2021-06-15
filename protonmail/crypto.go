@@ -1,14 +1,26 @@
 package protonmail
 
 import (
+	"bytes"
 	"crypto"
+	"errors"
 	"hash"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
+
+type SignatureGenerator interface {
+	Signature() (string, error)
+}
+
+type SignatureWriteCloser interface {
+	io.WriteCloser
+	SignatureGenerator
+}
 
 // primaryIdentity returns the Identity marked as primary or the first identity
 // if none are so marked.
@@ -103,7 +115,7 @@ func generateUnencryptedKey(cipher packet.CipherFunction, config *packet.Config)
 	}, nil
 }
 
-func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, signer *packet.PrivateKey, hints *openpgp.FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
+func symmetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, signer *packet.PrivateKey, hints *openpgp.FileHints, config *packet.Config) (plaintext SignatureWriteCloser, err error) {
 	// From https://github.com/golang/crypto/blob/master/openpgp/write.go#L172
 
 	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, symKey.CipherFunc, symKey.Key, config)
@@ -147,14 +159,19 @@ func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, sign
 	}
 
 	if signer != nil {
-		return signatureWriter{encryptedData, literalData, hash, hash.New(), signer, config}, nil
+		return signatureWriter{encryptedData, literalData, hash, hash.New(), signer, config, &signatureWriterCtx{""}}, nil
 	}
-	return literalData, nil
+	return noOpSignatureGenerator{literalData}, nil
+}
+
+// shared context for signatureWriter
+type signatureWriterCtx struct {
+	signature string
 }
 
 // signatureWriter hashes the contents of a message while passing it along to
 // literalData. When closed, it closes literalData, writes a signature packet
-// to encryptedData and then also closes encryptedData.
+// to ctx.signature and encryptedData and then also closes encryptedData.
 type signatureWriter struct {
 	encryptedData io.WriteCloser
 	literalData   io.WriteCloser
@@ -162,11 +179,20 @@ type signatureWriter struct {
 	h             hash.Hash
 	signer        *packet.PrivateKey
 	config        *packet.Config
+	ctx           *signatureWriterCtx
 }
 
 func (s signatureWriter) Write(data []byte) (int, error) {
 	s.h.Write(data)
 	return s.literalData.Write(data)
+}
+
+func (s signatureWriter) Signature() (string, error) {
+	var err error = nil
+	if s.ctx.signature == "" {
+		err = errors.New("no signature generated")
+	}
+	return s.ctx.signature, err
 }
 
 func (s signatureWriter) Close() error {
@@ -187,7 +213,34 @@ func (s signatureWriter) Close() error {
 	if err := sig.Serialize(s.encryptedData); err != nil {
 		return err
 	}
-	return s.encryptedData.Close()
+	if err := s.encryptedData.Close(); err != nil {
+		return err
+	}
+
+	var signatureErr error
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	spr, spw := io.Pipe()
+	go func() {
+		b := bytes.Buffer{}
+		if _, err := io.Copy(&b, spr); err != nil {
+			signatureErr = err
+			return
+		}
+		s.ctx.signature = b.String()
+		wg.Done()
+	}()
+
+	if err := sig.Serialize(spw); err != nil {
+		return err
+	}
+	if err := spw.Close(); err != nil {
+		return err
+	}
+	wg.Wait()
+
+	return signatureErr
 }
 
 // noOpCloser is like an ioutil.NopCloser, but for an io.Writer.
@@ -201,4 +254,20 @@ func (c noOpCloser) Write(data []byte) (n int, err error) {
 
 func (c noOpCloser) Close() error {
 	return nil
+}
+
+type noOpSignatureGenerator struct {
+	w io.WriteCloser
+}
+
+func (c noOpSignatureGenerator) Write(data []byte) (n int, err error) {
+	return c.w.Write(data)
+}
+
+func (c noOpSignatureGenerator) Close() error {
+	return c.w.Close()
+}
+
+func (c noOpSignatureGenerator) Signature() (string, error) {
+	return "", errors.New("no signature generated")
 }
