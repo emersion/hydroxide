@@ -263,7 +263,143 @@ func (b *backend) ListAddressObjects(req *carddav.AddressDataRequest) ([]carddav
 }
 
 func (b *backend) QueryAddressObjects(query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
-	panic("TODO")
+	all, err := b.ListAddressObjects(&query.DataRequest)
+	if err != nil {
+		return nil, fmt.Errorf("could not list address objects: %w", err)
+	}
+
+	if query == nil {
+		// no query, return the full list of contacts.
+		return all, nil
+	}
+
+	var aos []carddav.AddressObject
+	if query.Limit > 0 {
+		aos = make([]carddav.AddressObject, 0, query.Limit)
+	}
+
+loop:
+	for _, ao := range all {
+		ok, err := match(query, ao)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			aos = append(aos, ao)
+			if query.Limit > 0 && len(aos) >= query.Limit {
+				break loop
+			}
+		}
+	}
+
+	return aos, nil
+}
+
+func match(query *carddav.AddressBookQuery, ao carddav.AddressObject) (bool, error) {
+	if query.DataRequest.AllProp {
+		for _, name := range query.DataRequest.Props {
+			field := ao.Card.Get(name)
+			if field == nil {
+				// missing required property.
+				return false, fmt.Errorf("missing property %q", name)
+			}
+		}
+	}
+
+	switch query.FilterTest {
+	default:
+		return false, fmt.Errorf("unknown query filter test %q", query.FilterTest)
+
+	case carddav.FilterAnyOf, "":
+		for _, prop := range query.PropFilters {
+			ok, err := matchPropFilter(prop, ao)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	case carddav.FilterAllOf:
+		for _, prop := range query.PropFilters {
+			ok, err := matchPropFilter(prop, ao)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+}
+
+func matchPropFilter(prop carddav.PropFilter, ao carddav.AddressObject) (bool, error) {
+	field := ao.Card.Get(prop.Name)
+	if field == nil {
+		// assume AddressBookQuery.DataRequest.AllProp is false
+		return false, nil
+	}
+
+	// TODO: handle carddav.PropFilter.IsNotDefined.
+	// TODO: handle carddav.PropFilter.Params.
+
+	switch prop.Test {
+	default:
+		return false, fmt.Errorf("unknown property filter test %q", prop.Test)
+
+	case carddav.FilterAnyOf, "":
+		for _, txt := range prop.TextMatches {
+			ok, err := matchTextMatch(txt, field)
+			if err != nil {
+				return false, err
+			}
+			if ok {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	case carddav.FilterAllOf:
+		for _, txt := range prop.TextMatches {
+			ok, err := matchTextMatch(txt, field)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+}
+
+func matchTextMatch(txt carddav.TextMatch, field *vcard.Field) (bool, error) {
+	// TODO: handle carddav.TextMatch.IsNotDefined.
+	var ok bool
+	switch txt.MatchType {
+	default:
+		return false, fmt.Errorf("unknown textmatch type %q", txt.MatchType)
+
+	case carddav.MatchEquals:
+		ok = txt.Text == field.Value
+
+	case carddav.MatchContains, "":
+		ok = strings.Contains(field.Value, txt.Text)
+
+	case carddav.MatchStartsWith:
+		ok = strings.HasPrefix(field.Value, txt.Text)
+
+	case carddav.MatchEndsWith:
+		ok = strings.HasSuffix(field.Value, txt.Text)
+	}
+
+	if txt.NegateCondition {
+		ok = !ok
+	}
+	return ok, nil
 }
 
 func (b *backend) PutAddressObject(path string, card vcard.Card) (loc string, err error) {
