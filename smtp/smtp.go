@@ -135,13 +135,19 @@ func (s *session) Data(r io.Reader) error {
 		return errors.New("sender address key hasn't been decrypted")
 	}
 
+	msgID, err := mr.Header.MessageID()
+	if err != nil {
+		return fmt.Errorf("failed to parse Message-Id: %v", err)
+	}
+
 	msg := &protonmail.Message{
-		ToList:    toPMAddressList(toList),
-		CCList:    toPMAddressList(ccList),
-		BCCList:   toPMAddressList(bccList),
-		Subject:   subject,
-		Header:    formatHeader(mr.Header),
-		AddressID: fromAddr.ID,
+		ToList:     toPMAddressList(toList),
+		CCList:     toPMAddressList(ccList),
+		BCCList:    toPMAddressList(bccList),
+		Subject:    subject,
+		Header:     formatHeader(mr.Header),
+		AddressID:  fromAddr.ID,
+		ExternalID: msgID,
 		Sender: &protonmail.MessageAddress{
 			Address: rawFrom.Address,
 			Name:    rawFrom.Name,
