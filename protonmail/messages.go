@@ -54,9 +54,9 @@ type MessageAddress struct {
 }
 
 type Message struct {
-	ID             string
+	ID             string `json:",omitempty"`
 	Order          int64
-	ConversationID string
+	ConversationID string `json:",omitempty"`
 	Subject        string
 	Unread         int
 	Type           MessageType
@@ -77,10 +77,10 @@ type Message struct {
 	CCList         []*MessageAddress
 	BCCList        []*MessageAddress
 	ReplyTos       []*MessageAddress
-	Header         string
+	Header         string `json:",omitempty"`
 	Attachments    []*Attachment
 	LabelIDs       []string
-	ExternalID     string
+	ExternalID     string `json:",omitempty"`
 }
 
 func (msg *Message) Read(keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
