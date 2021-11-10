@@ -61,6 +61,14 @@ func askPass(prompt string) ([]byte, error) {
 	return b, err
 }
 
+func askBridgePass() (string, error) {
+	if v := os.Getenv("HYDROXIDE_BRIDGE_PASS"); v != "" {
+		return v, nil
+	}
+	b, err := askPass("Bridge password")
+	return string(b), err
+}
+
 func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsConfig *tls.Config) error {
 	be := smtpbackend.New(authManager)
 	s := smtp.NewServer(be)
@@ -200,7 +208,11 @@ Global options:
 	-tls-key /path/to/key.pem
 		Path to the certificate key to use for incoming connections (Optional)
 	-tls-client-ca /path/to/ca.pem
-		If set, clients must provide a certificate signed by the given CA (Optional)`
+		If set, clients must provide a certificate signed by the given CA (Optional)
+
+Environment variables:
+	HYDROXIDE_BRIDGE_PASS	Don't prompt for the bridge password, use this variable instead
+`
 
 func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug logs")
@@ -228,7 +240,7 @@ func main() {
 	sendmailCmd := flag.NewFlagSet("sendmail", flag.ExitOnError)
 
 	flag.Usage = func() {
-		fmt.Println(usage)
+		fmt.Print(usage)
 	}
 
 	flag.Parse()
@@ -358,11 +370,9 @@ func main() {
 			log.Fatal("usage: hydroxide export-secret-keys <username>")
 		}
 
-		var bridgePassword string
-		if pass, err := askPass("Bridge password"); err != nil {
+		bridgePassword, err := askBridgePass()
+		if err != nil {
 			log.Fatal(err)
-		} else {
-			bridgePassword = string(pass)
 		}
 
 		_, privateKeys, err := auth.NewManager(newClient).Auth(username, bridgePassword)
@@ -398,11 +408,9 @@ func main() {
 		}
 		defer f.Close()
 
-		var bridgePassword string
-		if pass, err := askPass("Bridge password"); err != nil {
+		bridgePassword, err := askBridgePass()
+		if err != nil {
 			log.Fatal(err)
-		} else {
-			bridgePassword = string(pass)
 		}
 
 		c, _, err := auth.NewManager(newClient).Auth(username, bridgePassword)
@@ -442,11 +450,9 @@ func main() {
 			log.Fatal("usage: hydroxide export-messages [-conversation-id <id>] [-message-id <id>] <username>")
 		}
 
-		var bridgePassword string
-		if pass, err := askPass("Bridge password"); err != nil {
+		bridgePassword, err := askBridgePass()
+		if err != nil {
 			log.Fatal(err)
-		} else {
-			bridgePassword = string(pass)
 		}
 
 		c, privateKeys, err := auth.NewManager(newClient).Auth(username, bridgePassword)
@@ -521,11 +527,9 @@ func main() {
 		sendmailCmd.Parse(flag.Args()[3:])
 		rcpt := sendmailCmd.Args()
 
-		var bridgePassword string
-		if pass, err := askPass("Bridge password"); err != nil {
+		bridgePassword, err := askBridgePass()
+		if err != nil {
 			log.Fatal(err)
-		} else {
-			bridgePassword = string(pass)
 		}
 
 		c, privateKeys, err := auth.NewManager(newClient).Auth(username, bridgePassword)
