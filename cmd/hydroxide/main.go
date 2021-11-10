@@ -45,7 +45,8 @@ func newClient() *protonmail.Client {
 func askPass(prompt string) ([]byte, error) {
 	f := os.Stdin
 	if !isatty.IsTerminal(f.Fd()) {
-		// TODO: this assumes Unix
+		// This can happen if stdin is used for piping data
+		// TODO: the following assumes Unix
 		var err error
 		if f, err = os.Open("/dev/tty"); err != nil {
 			return nil, err
@@ -168,6 +169,7 @@ Commands:
 	imap			Run hydroxide as an IMAP server
 	import-messages <username> <file>	Import messages
 	export-messages [options...] <username>	Export messages
+	sendmail <username> -- <args...>	sendmail(1) interface
 	serve			Run all servers
 	smtp			Run hydroxide as an SMTP server
 	status			View hydroxide status
@@ -223,6 +225,7 @@ func main() {
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
 	importMessagesCmd := flag.NewFlagSet("import-messages", flag.ExitOnError)
 	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
+	sendmailCmd := flag.NewFlagSet("sendmail", flag.ExitOnError)
 
 	flag.Usage = func() {
 		fmt.Println(usage)
@@ -506,6 +509,44 @@ func main() {
 			}()
 		}
 		log.Fatal(<-done)
+	case "sendmail":
+		username := flag.Arg(1)
+		if username == "" || flag.Arg(2) != "--" {
+			log.Fatal("usage: hydroxide sendmail <username> -- <args...>")
+		}
+
+		// TODO: other sendmail flags
+		var dotEOF bool
+		sendmailCmd.BoolVar(&dotEOF, "i", false, "don't treat a line with only a . character as the end of input")
+		sendmailCmd.Parse(flag.Args()[3:])
+		rcpt := sendmailCmd.Args()
+
+		var bridgePassword string
+		if pass, err := askPass("Bridge password"); err != nil {
+			log.Fatal(err)
+		} else {
+			bridgePassword = string(pass)
+		}
+
+		c, privateKeys, err := auth.NewManager(newClient).Auth(username, bridgePassword)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		u, err := c.GetCurrentUser()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		addrs, err := c.ListAddresses()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = smtpbackend.SendMail(c, u, privateKeys, addrs, rcpt, os.Stdin)
+		if err != nil {
+			log.Fatal(err)
+		}
 	default:
 		fmt.Println(usage)
 		if cmd != "help" {

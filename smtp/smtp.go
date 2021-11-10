@@ -37,37 +37,14 @@ func formatHeader(h mail.Header) string {
 	return b.String()
 }
 
-type session struct {
-	c            *protonmail.Client
-	u            *protonmail.User
-	privateKeys  openpgp.EntityList
-	addrs        []*protonmail.Address
-	allReceivers []string
-}
-
-func (s *session) Mail(from string, options smtp.MailOptions) error {
-	return nil
-}
-
-func (s *session) Rcpt(to string) error {
-	if to == "" {
-		return nil
-	}
-
-	// Seems like github.com/emersion/go-smtp/conn.go:487 removes marks on message
-	// "to" is added into allReceivers blindly
-	s.allReceivers = append(s.allReceivers, to)
-	return nil
-}
-
-func (s *session) bccFromRest(ignoreMails []*mail.Address) []*mail.Address {
+func bccFromRest(rcpt []string, ignoreMails []*mail.Address) []*mail.Address {
 	ignore := make(map[string]struct{})
 	for _, mail := range ignoreMails {
 		ignore[mail.Address] = struct{}{}
 	}
 
-	final := make([]*mail.Address, 0, len(s.allReceivers))
-	for _, addr := range s.allReceivers {
+	final := make([]*mail.Address, 0, len(rcpt))
+	for _, addr := range rcpt {
 		if _, exists := ignore[addr]; exists {
 			continue
 		}
@@ -78,7 +55,7 @@ func (s *session) bccFromRest(ignoreMails []*mail.Address) []*mail.Address {
 	return final
 }
 
-func (s *session) Data(r io.Reader) error {
+func SendMail(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList, addrs []*protonmail.Address, rcpt []string, r io.Reader) error {
 	// Parse the incoming MIME message header
 	mr, err := mail.CreateReader(r)
 	if err != nil {
@@ -92,7 +69,7 @@ func (s *session) Data(r io.Reader) error {
 	bccList, _ := mr.Header.AddressList("Bcc")
 
 	if len(bccList) == 0 {
-		bccList = s.bccFromRest(append(toList, ccList...))
+		bccList = bccFromRest(rcpt, append(toList, ccList...))
 	}
 
 	if len(fromList) != 1 {
@@ -105,7 +82,7 @@ func (s *session) Data(r io.Reader) error {
 	rawFrom := fromList[0]
 	fromAddrStr := rawFrom.Address
 	var fromAddr *protonmail.Address
-	for _, addr := range s.addrs {
+	for _, addr := range addrs {
 		if strings.EqualFold(addr.Email, fromAddrStr) {
 			fromAddr = addr
 			break
@@ -125,7 +102,7 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	var privateKey *openpgp.Entity
-	for _, e := range s.privateKeys {
+	for _, e := range privateKeys {
 		if e.PrimaryKey.KeyId == encryptedPrivateKey.PrimaryKey.KeyId {
 			privateKey = e
 			break
@@ -175,7 +152,7 @@ func (s *session) Data(r io.Reader) error {
 			ExternalID: inReplyTo,
 			AddressID:  fromAddr.ID,
 		}
-		total, msgs, err := s.c.ListMessages(&filter)
+		total, msgs, err := c.ListMessages(&filter)
 		if err != nil {
 			return err
 		}
@@ -184,7 +161,7 @@ func (s *session) Data(r io.Reader) error {
 		}
 	}
 
-	msg, err = s.c.CreateDraftMessage(msg, parentID)
+	msg, err = c.CreateDraftMessage(msg, parentID)
 	if err != nil {
 		return fmt.Errorf("cannot create draft message: %v", err)
 	}
@@ -262,7 +239,7 @@ func (s *session) Data(r io.Reader) error {
 				pw.CloseWithError(cleartext.Close())
 			}()
 
-			att, err = s.c.CreateAttachment(att, pr)
+			att, err = c.CreateAttachment(att, pr)
 			if err != nil {
 				return fmt.Errorf("cannot upload attachment: %v", err)
 			}
@@ -290,7 +267,7 @@ func (s *session) Data(r io.Reader) error {
 		return err
 	}
 
-	msg, err = s.c.UpdateDraftMessage(msg)
+	msg, err = c.UpdateDraftMessage(msg)
 	if err != nil {
 		return fmt.Errorf("cannot update draft message: %v", err)
 	}
@@ -305,7 +282,7 @@ func (s *session) Data(r io.Reader) error {
 	var plaintextRecipients []string
 	encryptedRecipients := make(map[string]*openpgp.Entity)
 	for _, rcpt := range recipients {
-		resp, err := s.c.GetPublicKeys(rcpt.Address)
+		resp, err := c.GetPublicKeys(rcpt.Address)
 		if err != nil {
 			return fmt.Errorf("cannot get public key for address %q: %v", rcpt.Address, err)
 		}
@@ -381,12 +358,39 @@ func (s *session) Data(r io.Reader) error {
 		outgoing.Packages = append(outgoing.Packages, encryptedSet)
 	}
 
-	_, _, err = s.c.SendMessage(outgoing)
+	_, _, err = c.SendMessage(outgoing)
 	if err != nil {
 		return fmt.Errorf("cannot send message: %v", err)
 	}
 
 	return nil
+}
+
+type session struct {
+	c            *protonmail.Client
+	u            *protonmail.User
+	privateKeys  openpgp.EntityList
+	addrs        []*protonmail.Address
+	allReceivers []string
+}
+
+func (s *session) Mail(from string, options smtp.MailOptions) error {
+	return nil
+}
+
+func (s *session) Rcpt(to string) error {
+	if to == "" {
+		return nil
+	}
+
+	// Seems like github.com/emersion/go-smtp/conn.go:487 removes marks on message
+	// "to" is added into allReceivers blindly
+	s.allReceivers = append(s.allReceivers, to)
+	return nil
+}
+
+func (s *session) Data(r io.Reader) error {
+	return SendMail(s.c, s.u, s.privateKeys, s.addrs, s.allReceivers, r)
 }
 
 func (s *session) Reset() {
