@@ -175,7 +175,7 @@ Commands:
 	carddav			Run hydroxide as a CardDAV server
 	export-secret-keys <username> Export secret keys
 	imap			Run hydroxide as an IMAP server
-	import-messages <username> <file>	Import messages
+	import-messages <username> [file]	Import messages
 	export-messages [options...] <username>	Export messages
 	sendmail <username> -- <args...>	sendmail(1) interface
 	serve			Run all servers
@@ -398,15 +398,18 @@ func main() {
 		importMessagesCmd.Parse(flag.Args()[1:])
 		username := importMessagesCmd.Arg(0)
 		archivePath := importMessagesCmd.Arg(1)
-		if username == "" || archivePath == "" {
-			log.Fatal("usage: hydroxide import-messages <username> <file>")
+		if username == "" {
+			log.Fatal("usage: hydroxide import-messages <username> [file]")
 		}
 
-		f, err := os.Open(archivePath)
-		if err != nil {
-			log.Fatal(err)
+		f := os.Stdin
+		if archivePath != "" {
+			f, err = os.Open(archivePath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
 		}
-		defer f.Close()
 
 		bridgePassword, err := askBridgePass()
 		if err != nil {
