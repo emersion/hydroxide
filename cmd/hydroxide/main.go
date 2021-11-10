@@ -18,7 +18,8 @@ import (
 	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-smtp"
-	"github.com/howeyc/gopass"
+	"github.com/mattn/go-isatty"
+	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
@@ -39,6 +40,23 @@ func newClient() *protonmail.Client {
 		AppVersion: "Web_3.16.65",
 		Debug:      debug,
 	}
+}
+
+func askPass() ([]byte, error) {
+	f := os.Stdin
+	if !isatty.IsTerminal(f.Fd()) {
+		// TODO: this assumes Unix
+		var err error
+		if f, err = os.Open("/dev/tty"); err != nil {
+			return nil, err
+		}
+		defer f.Close()
+	}
+	b, err := terminal.ReadPassword(int(f.Fd()))
+	if err == nil {
+		fmt.Fprintf(os.Stderr, "\n")
+	}
+	return b, err
 }
 
 func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsConfig *tls.Config) error {
@@ -240,7 +258,7 @@ func main() {
 		var loginPassword string
 		if a == nil {
 			fmt.Printf("Password: ")
-			if pass, err := gopass.GetPasswd(); err != nil {
+			if pass, err := askPass(); err != nil {
 				log.Fatal(err)
 			} else {
 				loginPassword = string(pass)
@@ -284,7 +302,7 @@ func main() {
 			} else {
 				fmt.Printf("Password: ")
 			}
-			if pass, err := gopass.GetPasswd(); err != nil {
+			if pass, err := askPass(); err != nil {
 				log.Fatal(err)
 			} else {
 				mailboxPassword = string(pass)
@@ -340,7 +358,7 @@ func main() {
 
 		var bridgePassword string
 		fmt.Printf("Bridge password: ")
-		if pass, err := gopass.GetPasswd(); err != nil {
+		if pass, err := askPass(); err != nil {
 			log.Fatal(err)
 		} else {
 			bridgePassword = string(pass)
@@ -381,7 +399,7 @@ func main() {
 
 		var bridgePassword string
 		fmt.Printf("Bridge password: ")
-		if pass, err := gopass.GetPasswd(); err != nil {
+		if pass, err := askPass(); err != nil {
 			log.Fatal(err)
 		} else {
 			bridgePassword = string(pass)
@@ -426,7 +444,7 @@ func main() {
 
 		var bridgePassword string
 		fmt.Fprintf(os.Stderr, "Bridge password: ")
-		if pass, err := gopass.GetPasswd(); err != nil {
+		if pass, err := askPass(); err != nil {
 			log.Fatal(err)
 		} else {
 			bridgePassword = string(pass)

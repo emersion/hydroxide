@@ -15,6 +15,7 @@ require (
 	github.com/emersion/go-vcard v0.0.0-20210521075357-3445b9171995
 	github.com/emersion/go-webdav v0.3.0
 	github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c
+	github.com/mattn/go-isatty v0.0.14 // indirect
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
