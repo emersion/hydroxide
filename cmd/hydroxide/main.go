@@ -42,7 +42,7 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func askPass() ([]byte, error) {
+func askPass(prompt string) ([]byte, error) {
 	f := os.Stdin
 	if !isatty.IsTerminal(f.Fd()) {
 		// TODO: this assumes Unix
@@ -52,6 +52,7 @@ func askPass() ([]byte, error) {
 		}
 		defer f.Close()
 	}
+	fmt.Fprintf(os.Stderr, "%v: ", prompt)
 	b, err := terminal.ReadPassword(int(f.Fd()))
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "\n")
@@ -257,8 +258,7 @@ func main() {
 
 		var loginPassword string
 		if a == nil {
-			fmt.Printf("Password: ")
-			if pass, err := askPass(); err != nil {
+			if pass, err := askPass("Password"); err != nil {
 				log.Fatal(err)
 			} else {
 				loginPassword = string(pass)
@@ -297,12 +297,11 @@ func main() {
 			mailboxPassword = loginPassword
 		}
 		if mailboxPassword == "" {
+			prompt := "Password"
 			if a.PasswordMode == protonmail.PasswordTwo {
-				fmt.Printf("Mailbox password: ")
-			} else {
-				fmt.Printf("Password: ")
+				prompt = "Mailbox password"
 			}
-			if pass, err := askPass(); err != nil {
+			if pass, err := askPass(prompt); err != nil {
 				log.Fatal(err)
 			} else {
 				mailboxPassword = string(pass)
@@ -357,8 +356,7 @@ func main() {
 		}
 
 		var bridgePassword string
-		fmt.Printf("Bridge password: ")
-		if pass, err := askPass(); err != nil {
+		if pass, err := askPass("Bridge password"); err != nil {
 			log.Fatal(err)
 		} else {
 			bridgePassword = string(pass)
@@ -398,8 +396,7 @@ func main() {
 		defer f.Close()
 
 		var bridgePassword string
-		fmt.Printf("Bridge password: ")
-		if pass, err := askPass(); err != nil {
+		if pass, err := askPass("Bridge password"); err != nil {
 			log.Fatal(err)
 		} else {
 			bridgePassword = string(pass)
@@ -443,8 +440,7 @@ func main() {
 		}
 
 		var bridgePassword string
-		fmt.Fprintf(os.Stderr, "Bridge password: ")
-		if pass, err := askPass(); err != nil {
+		if pass, err := askPass("Bridge password"); err != nil {
 			log.Fatal(err)
 		} else {
 			bridgePassword = string(pass)
