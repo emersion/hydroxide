@@ -25,6 +25,30 @@ func primaryIdentity(e *openpgp.Entity) *openpgp.Identity {
 	return firstIdentity
 }
 
+func entityToKey(e *openpgp.Entity, ident *openpgp.Identity) *openpgp.Key {
+	return &openpgp.Key{
+		Entity:        e,
+		PublicKey:     e.PrimaryKey,
+		PrivateKey:    e.PrivateKey,
+		SelfSignature: ident.SelfSignature,
+		Revocations:   e.Revocations,
+	}
+}
+
+func entityPrimaryKey(e *openpgp.Entity) *openpgp.Key {
+	return entityToKey(e, primaryIdentity(e))
+}
+
+func entitySubkeyToKey(e *openpgp.Entity, subkey *openpgp.Subkey) *openpgp.Key {
+	return &openpgp.Key{
+		Entity:        e,
+		PublicKey:     subkey.PublicKey,
+		PrivateKey:    subkey.PrivateKey,
+		SelfSignature: subkey.Sig,
+		Revocations:   subkey.Revocations,
+	}
+}
+
 // encryptionKey returns the best candidate Key for encrypting a message to the
 // given Entity.
 func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
@@ -45,7 +69,7 @@ func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 
 	if candidateSubkey != -1 {
 		subkey := e.Subkeys[candidateSubkey]
-		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+		return *entitySubkeyToKey(e, &subkey), true
 	}
 
 	// If we don't have any candidate subkeys for encryption and
@@ -54,7 +78,7 @@ func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 	// marked as ok to encrypt to, then we can obviously use it.
 	i := primaryIdentity(e)
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications && e.PrimaryKey.PubKeyAlgo.CanEncrypt() && !i.SelfSignature.SigExpired(now) {
-		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
+		return *entityToKey(e, i), true
 	}
 
 	// This Entity appears to be signing only.
@@ -78,14 +102,14 @@ func signingKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 
 	if candidateSubkey != -1 {
 		subkey := e.Subkeys[candidateSubkey]
-		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+		return *entitySubkeyToKey(e, &subkey), true
 	}
 
 	// If we have no candidate subkey then we assume that it's ok to sign
 	// with the primary key.
 	i := primaryIdentity(e)
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign && !i.SelfSignature.SigExpired(now) {
-		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
+		return *entityToKey(e, i), true
 	}
 
 	return openpgp.Key{}, false
