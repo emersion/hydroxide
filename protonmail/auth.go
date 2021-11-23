@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io/ioutil"
@@ -273,8 +274,14 @@ func decryptPrivateKeyToken(key *PrivateKey, userKeyRing openpgp.EntityList) ([]
 		return nil, err
 	}
 
-	// TODO: check key.Signature
-	return ioutil.ReadAll(md.UnverifiedBody)
+	b, err := ioutil.ReadAll(md.UnverifiedBody)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: check signer?
+	_, err = openpgp.CheckArmoredDetachedSignature(userKeyRing, bytes.NewReader(b), strings.NewReader(key.Signature), nil)
+	return b, err
 }
 
 func unlockPrivateKey(key *PrivateKey, userKeyRing openpgp.EntityList, keySalt []byte, passphraseBytes []byte) (*openpgp.Entity, error) {
