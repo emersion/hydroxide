@@ -23,8 +23,11 @@ type PrivateKey struct {
 	Flags       PrivateKeyFlags
 	PrivateKey  string
 	Fingerprint string
-	Activation  interface{} // TODO
 	Primary     int
+	Active      int
+	Token       string
+	Signature   string
+	// TODO: Fingerprints, PublicKey, Activation
 }
 
 func (priv *PrivateKey) Entity() (*openpgp.Entity, error) {

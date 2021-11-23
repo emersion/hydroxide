@@ -3,11 +3,14 @@ package protonmail
 import (
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
@@ -235,7 +238,7 @@ func (c *Client) ListKeySalts() (map[string][]byte, error) {
 	return salts, nil
 }
 
-func unlockKey(e *openpgp.Entity, passphraseBytes []byte) error {
+func unlockEntity(e *openpgp.Entity, passphraseBytes []byte) error {
 	var privateKeys []*packet.PrivateKey
 
 	// e.PrivateKey is a signing key
@@ -259,9 +262,78 @@ func unlockKey(e *openpgp.Entity, passphraseBytes []byte) error {
 	return nil
 }
 
+func decryptPrivateKeyToken(key *PrivateKey, userKeyRing openpgp.EntityList) ([]byte, error) {
+	block, err := armor.Decode(strings.NewReader(key.Token))
+	if err != nil {
+		return nil, err
+	}
+
+	md, err := openpgp.ReadMessage(block.Body, userKeyRing, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: check key.Signature
+	return ioutil.ReadAll(md.UnverifiedBody)
+}
+
+func unlockPrivateKey(key *PrivateKey, userKeyRing openpgp.EntityList, keySalt []byte, passphraseBytes []byte) (*openpgp.Entity, error) {
+	entity, err := key.Entity()
+	if err != nil {
+		return nil, err
+	}
+
+	if key.Token != "" {
+		passphraseBytes, err = decryptPrivateKeyToken(key, userKeyRing)
+	} else if keySalt != nil {
+		passphraseBytes, err = computeKeyPassword(passphraseBytes, keySalt)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if err := unlockEntity(entity, passphraseBytes); err != nil {
+		return nil, err
+	}
+
+	return entity, nil
+}
+
+func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts map[string][]byte, passphraseBytes []byte) (openpgp.EntityList, error) {
+	var keyRing openpgp.EntityList
+	for _, key := range keys {
+		if key.Active != 1 {
+			continue
+		}
+
+		entity, err := unlockPrivateKey(key, userKeyRing, keySalts[key.ID], passphraseBytes)
+		if err != nil {
+			log.Printf("warning: failed to unlock key %v: %v", key.Fingerprint, err)
+			continue
+		}
+
+		keyRing = append(keyRing, entity)
+	}
+
+	if len(keyRing) == 0 {
+		return nil, fmt.Errorf("failed to unlock any key")
+	}
+	return keyRing, nil
+}
+
 func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase string) (openpgp.EntityList, error) {
 	c.uid = auth.UID
 	c.accessToken = auth.AccessToken
+
+	u, err := c.GetCurrentUser()
+	if err != nil {
+		return nil, err
+	}
+
+	userKeyRing, err := unlockKeyRing(u.Keys, nil, keySalts, []byte(passphrase))
+	if err != nil {
+		return nil, err
+	}
 
 	addrs, err := c.ListAddresses()
 	if err != nil {
@@ -270,28 +342,13 @@ func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase strin
 
 	var keyRing openpgp.EntityList
 	for _, addr := range addrs {
-		for _, key := range addr.Keys {
-			entity, err := key.Entity()
-			if err != nil {
-				log.Printf("warning: failed to read key %q: %v", addr.Email, err)
-				continue
-			}
-
-			passphraseBytes := []byte(passphrase)
-			if keySalt, ok := keySalts[key.ID]; ok && keySalt != nil {
-				passphraseBytes, err = computeKeyPassword(passphraseBytes, keySalt)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			if err := unlockKey(entity, passphraseBytes); err != nil {
-				log.Printf("warning: failed to unlock key %q %v: %v", addr.Email, entity.PrimaryKey.KeyIdString(), err)
-				continue
-			}
-
-			keyRing = append(keyRing, entity)
+		addrKeyRing, err := unlockKeyRing(addr.Keys, userKeyRing, keySalts, []byte(passphrase))
+		if err != nil {
+			log.Printf("warning: failed to unlock address <%v>: %v", addr.Email, err)
+			continue
 		}
+
+		keyRing = append(keyRing, addrKeyRing...)
 	}
 
 	if len(keyRing) == 0 {
