@@ -27,6 +27,8 @@ github.com/emersion/go-vcard v0.0.0-20210521075357-3445b9171995 h1:DpVfmcoBs6o9V
 github.com/emersion/go-vcard v0.0.0-20210521075357-3445b9171995/go.mod h1:HMJKR5wlh/ziNp+sHEDV2ltblO4JD2+IdDOWtGcQBTM=
 github.com/emersion/go-webdav v0.3.1 h1:8ISu6AlBwu7DKg9RQE3iRpE3CPM8Bfpfz7L3bi/xlGI=
 github.com/emersion/go-webdav v0.3.1/go.mod h1:uSM1VveeKtogBVWaYccTksToczooJ0rrVGNsgnDsr4Q=
+github.com/eyedeekay/sam3 v0.32.32 h1:9Ea1Ere5O8Clx8zYxKnvhrWy7R96Q4FvxlPskYf8VW0=
+github.com/eyedeekay/sam3 v0.32.32/go.mod h1:qRA9KIIVxbrHlkj+ZB+OoxFGFgdKeGp1vSgPw26eOVU=
 github.com/mattn/go-isatty v0.0.14 h1:yVuAays6BHfxijgZPzw+3Zlu5yQgKGP2/hcQbHb7S9Y=
 github.com/mattn/go-isatty v0.0.14/go.mod h1:7GGIvUiUoEMVVmxf/4nioHXj79iQHKdU27kJ6hsGG94=
 golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2/go.mod h1:T9bdIzuCu7OtxOm1hfPfRQxPLYneinmdGuTeoZ9dtd4=

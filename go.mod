@@ -15,6 +15,7 @@ require (
 	github.com/emersion/go-smtp v0.15.0
 	github.com/emersion/go-vcard v0.0.0-20210521075357-3445b9171995
 	github.com/emersion/go-webdav v0.3.1
+	github.com/eyedeekay/sam3 v0.32.32 // indirect
 	github.com/mattn/go-isatty v0.0.14
 	golang.org/x/crypto v0.0.0-20211117183948-ae814b36b871
 	golang.org/x/sys v0.0.0-20211117180635-dee7805ff2e1 // indirect

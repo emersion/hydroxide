@@ -30,6 +30,8 @@ import (
 	"github.com/emersion/hydroxide/imports"
 	"github.com/emersion/hydroxide/protonmail"
 	smtpbackend "github.com/emersion/hydroxide/smtp"
+
+	sam "github.com/eyedeekay/sam3/helper"
 )
 
 var debug bool
@@ -69,7 +71,7 @@ func askBridgePass() (string, error) {
 	return string(b), err
 }
 
-func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsConfig *tls.Config) error {
+func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsConfig *tls.Config, i2pConfig string) error {
 	be := smtpbackend.New(authManager)
 	s := smtp.NewServer(be)
 	s.Addr = addr
@@ -78,6 +80,14 @@ func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsC
 	s.TLSConfig = tlsConfig
 	if debug {
 		s.Debug = os.Stdout
+	}
+
+	if i2pConfig != "" {
+		listener, err := sam.I2PListener(i2pConfig+"-smtp", "127.0.0.1:7656", i2pConfig+"-smtp")
+		if err != nil {
+			return err
+		}
+		return s.Serve(listener)
 	}
 
 	if s.TLSConfig != nil {
@@ -89,7 +99,7 @@ func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsC
 	return s.ListenAndServe()
 }
 
-func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config) error {
+func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config, i2pConfig string) error {
 	be := imapbackend.New(authManager, eventsManager)
 	s := imapserver.New(be)
 	s.Addr = addr
@@ -102,6 +112,14 @@ func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, even
 	s.Enable(imapspacialuse.NewExtension())
 	s.Enable(imapmove.NewExtension())
 
+	if i2pConfig != "" {
+		listener, err := sam.I2PListener(i2pConfig+"-imap", "127.0.0.1:7656", i2pConfig+"-imap")
+		if err != nil {
+			return err
+		}
+		return s.Serve(listener)
+	}
+
 	if s.TLSConfig != nil {
 		log.Println("IMAP server listening with TLS on", s.Addr)
 		return s.ListenAndServeTLS()
@@ -111,7 +129,7 @@ func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, even
 	return s.ListenAndServe()
 }
 
-func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config) error {
+func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config, i2pConfig string) error {
 	handlers := make(map[string]http.Handler)
 
 	s := &http.Server{
@@ -149,6 +167,14 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 
 			h.ServeHTTP(resp, req)
 		}),
+	}
+
+	if i2pConfig != "" {
+		listener, err := sam.I2PListener(i2pConfig+"-dav", "127.0.0.1:7656", i2pConfig+"-dav")
+		if err != nil {
+			return err
+		}
+		return s.Serve(listener)
 	}
 
 	if s.TLSConfig != nil {
@@ -232,6 +258,7 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "Path to the certificate to use for incoming connections")
 	tlsCertKey := flag.String("tls-key", "", "Path to the certificate key to use for incoming connections")
 	tlsClientCA := flag.String("tls-client-ca", "", "If set, clients must provide a certificate signed by the given CA")
+	i2pConfig := flag.String("i2p", "", "Listen as an I2P Bridge")
 
 	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
@@ -239,9 +266,9 @@ func main() {
 	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
 	sendmailCmd := flag.NewFlagSet("sendmail", flag.ExitOnError)
 
-	flag.Usage = func() {
-		fmt.Print(usage)
-	}
+	//flag.Usage = func() {
+	//	fmt.Print(usage)
+	//}
 
 	flag.Parse()
 
@@ -482,17 +509,17 @@ func main() {
 	case "smtp":
 		addr := *smtpHost + ":" + *smtpPort
 		authManager := auth.NewManager(newClient)
-		log.Fatal(listenAndServeSMTP(addr, debug, authManager, tlsConfig))
+		log.Fatal(listenAndServeSMTP(addr, debug, authManager, tlsConfig, *i2pConfig))
 	case "imap":
 		addr := *imapHost + ":" + *imapPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager, tlsConfig))
+		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager, tlsConfig, *i2pConfig))
 	case "carddav":
 		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager, tlsConfig))
+		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager, tlsConfig, *i2pConfig))
 	case "serve":
 		smtpAddr := *smtpHost + ":" + *smtpPort
 		imapAddr := *imapHost + ":" + *imapPort
@@ -504,17 +531,17 @@ func main() {
 		done := make(chan error, 3)
 		if !*disableSMTP {
 			go func() {
-				done <- listenAndServeSMTP(smtpAddr, debug, authManager, tlsConfig)
+				done <- listenAndServeSMTP(smtpAddr, debug, authManager, tlsConfig, *i2pConfig)
 			}()
 		}
 		if !*disableIMAP {
 			go func() {
-				done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig)
+				done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig, *i2pConfig)
 			}()
 		}
 		if !*disableCardDAV {
 			go func() {
-				done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager, tlsConfig)
+				done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager, tlsConfig, *i2pConfig)
 			}()
 		}
 		log.Fatal(<-done)
