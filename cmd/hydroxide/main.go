@@ -221,6 +221,8 @@ Global options:
 		SMTP port on which hydroxide listens, defaults to 1025
 	-imap-port example.com
 		IMAP port on which hydroxide listens, defaults to 1143
+	-i2p example
+		Listen as an I2P service. Keys will be generated for you and placed in the working directory at example-dav, example-smtp, example-imap.
 	-carddav-port example.com
 		CardDAV port on which hydroxide listens, defaults to 8080
 	-disable-imap
@@ -266,9 +268,9 @@ func main() {
 	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
 	sendmailCmd := flag.NewFlagSet("sendmail", flag.ExitOnError)
 
-	//flag.Usage = func() {
-	//	fmt.Print(usage)
-	//}
+	flag.Usage = func() {
+		fmt.Print(usage)
+	}
 
 	flag.Parse()
 
