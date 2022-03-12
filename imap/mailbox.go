@@ -308,9 +308,9 @@ func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint3
 	}
 
 	// TODO: c.Not, c.Or
-	if c.Not != nil || c.Or != nil {
-		return nil, errors.New("search queries with NOT or OR clauses are not yet implemented")
-	}
+	// if c.Not != nil || c.Or != nil {
+	// 	return nil, errors.New("search queries with NOT or OR clauses are not yet implemented")
+	// }
 
 	var results []uint32
 	err := mbox.db.ForEach(func(seqNum, uid uint32, apiID string) error {
