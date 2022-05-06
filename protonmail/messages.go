@@ -394,7 +394,7 @@ type MessagePackage struct {
 	PasswordHint string
 	Auth         interface{} // TODO
 	Token        string
-	EncToken     string
+	EncToken     string `json:",omitempty"`
 }
 
 type MessagePackageSet struct {
