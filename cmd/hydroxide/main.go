@@ -555,7 +555,7 @@ func main() {
 			log.Fatal(err)
 		}
 	default:
-		fmt.Println(usage)
+		fmt.Print(usage)
 		if cmd != "help" {
 			log.Fatal("Unrecognized command")
 		}
