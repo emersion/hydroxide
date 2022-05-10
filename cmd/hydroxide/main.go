@@ -32,11 +32,16 @@ import (
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
 
-var debug bool
+const defaultAPIEndpoint = "https://old.protonmail.com/api"
+
+var (
+	debug       bool
+	apiEndpoint string
+)
 
 func newClient() *protonmail.Client {
 	return &protonmail.Client{
-		RootURL:    "https://old.protonmail.com/api",
+		RootURL:    apiEndpoint,
 		AppVersion: "Web_3.16.65",
 		Debug:      debug,
 	}
@@ -185,6 +190,8 @@ Commands:
 Global options:
 	-debug
 		Enable debug logs
+	-api-endpoint <url>
+		ProtonMail API endpoint
 	-smtp-host example.com
 		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
 	-imap-host example.com
@@ -216,6 +223,7 @@ Environment variables:
 
 func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug logs")
+	flag.StringVar(&apiEndpoint, "api-endpoint", defaultAPIEndpoint, "ProtonMail API endpoint")
 
 	smtpHost := flag.String("smtp-host", "127.0.0.1", "Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	smtpPort := flag.String("smtp-port", "1025", "SMTP port on which hydroxide listens, defaults to 1025")
