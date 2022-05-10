@@ -32,7 +32,7 @@ import (
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
 
-const defaultAPIEndpoint = "https://old.protonmail.com/api"
+const defaultAPIEndpoint = "https://mail.protonmail.com/api"
 
 var (
 	debug       bool
