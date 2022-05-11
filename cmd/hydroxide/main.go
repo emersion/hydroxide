@@ -42,7 +42,7 @@ var (
 func newClient() *protonmail.Client {
 	return &protonmail.Client{
 		RootURL:    apiEndpoint,
-		AppVersion: "Web_3.16.65",
+		AppVersion: "web-mail@4.20.8",
 		Debug:      debug,
 	}
 }
