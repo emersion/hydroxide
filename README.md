@@ -91,6 +91,8 @@ Tested on GNOME (Evolution) and Android (DAVDroid).
 
 ### IMAP
 
+⚠️  **Warning**: IMAP support is work-in-progress. Here be dragons.
+
 For now, it only supports unencrypted local connections.
 
 ```shell
