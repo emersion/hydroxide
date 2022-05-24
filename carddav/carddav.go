@@ -272,7 +272,18 @@ func (b *backend) ListAddressObjects(ctx context.Context, req *carddav.AddressDa
 }
 
 func (b *backend) QueryAddressObjects(ctx context.Context, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
-	panic("TODO")
+	req := carddav.AddressDataRequest{AllProp: true}
+	if query != nil {
+		req = query.DataRequest
+	}
+
+	// TODO: optimize
+	all, err := b.ListAddressObjects(ctx, &req)
+	if err != nil {
+		return nil, err
+	}
+
+	return carddav.Filter(query, all)
 }
 
 func (b *backend) PutAddressObject(ctx context.Context, path string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (loc string, err error) {
