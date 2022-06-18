@@ -32,7 +32,7 @@ import (
 	smtpbackend "github.com/emersion/hydroxide/smtp"
 )
 
-const defaultAPIEndpoint = "https://mail.protonmail.com/api"
+const defaultAPIEndpoint = "https://mail.proton.me/api"
 
 var (
 	debug       bool
@@ -42,7 +42,7 @@ var (
 func newClient() *protonmail.Client {
 	return &protonmail.Client{
 		RootURL:    apiEndpoint,
-		AppVersion: "web-mail@4.20.8",
+		AppVersion: "web-mail@5.0.2.3",
 		Debug:      debug,
 	}
 }
