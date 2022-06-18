@@ -119,6 +119,7 @@ func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Re
 }
 
 func (c *Client) do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36")
 	httpClient := c.HTTPClient
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -154,7 +155,6 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 
 func (c *Client) doJSON(req *http.Request, respData interface{}) error {
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36")
 	if respData == nil {
 		respData = new(resp)
 	}
