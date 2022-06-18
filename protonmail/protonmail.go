@@ -119,6 +119,8 @@ func (c *Client) newJSONRequest(method, path string, body interface{}) (*http.Re
 }
 
 func (c *Client) do(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64; rv:101.0) Gecko/20100101 Firefox/101.0")
+
 	httpClient := c.HTTPClient
 	if httpClient == nil {
 		httpClient = http.DefaultClient
