@@ -16,8 +16,7 @@ import (
 	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-smtp"
-	"github.com/mattn/go-isatty"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/carddav"
@@ -47,7 +46,7 @@ func newClient() *protonmail.Client {
 
 func askPass(prompt string) ([]byte, error) {
 	f := os.Stdin
-	if !isatty.IsTerminal(f.Fd()) {
+	if !term.IsTerminal(int(f.Fd())) {
 		// This can happen if stdin is used for piping data
 		// TODO: the following assumes Unix
 		var err error
@@ -57,7 +56,7 @@ func askPass(prompt string) ([]byte, error) {
 		defer f.Close()
 	}
 	fmt.Fprintf(os.Stderr, "%v: ", prompt)
-	b, err := terminal.ReadPassword(int(f.Fd()))
+	b, err := term.ReadPassword(int(f.Fd()))
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "\n")
 	}
