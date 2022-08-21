@@ -13,8 +13,6 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
-	imapmove "github.com/emersion/go-imap-move"
-	imapspacialuse "github.com/emersion/go-imap-specialuse"
 	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-smtp"
@@ -103,9 +101,6 @@ func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, even
 	if debug {
 		s.Debug = os.Stdout
 	}
-
-	s.Enable(imapspacialuse.NewExtension())
-	s.Enable(imapmove.NewExtension())
 
 	if s.TLSConfig != nil {
 		log.Println("IMAP server listening with TLS on", s.Addr)

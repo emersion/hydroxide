@@ -7,9 +7,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/emersion/go-imap"
-	"github.com/emersion/go-imap-specialuse"
 	imapbackend "github.com/emersion/go-imap/backend"
-
 	"github.com/emersion/hydroxide/events"
 	"github.com/emersion/hydroxide/imap/database"
 	"github.com/emersion/hydroxide/protonmail"
@@ -21,13 +19,13 @@ var systemMailboxes = []struct {
 	attrs []string
 }{
 	{imap.InboxName, protonmail.LabelInbox, nil},
-	{"All Mail", protonmail.LabelAllMail, []string{specialuse.All}},
-	{"Archive", protonmail.LabelArchive, []string{specialuse.Archive}},
-	{"Drafts", protonmail.LabelDraft, []string{specialuse.Drafts}},
-	{"Starred", protonmail.LabelStarred, []string{specialuse.Flagged}},
-	{"Spam", protonmail.LabelSpam, []string{specialuse.Junk}},
-	{"Sent", protonmail.LabelSent, []string{specialuse.Sent}},
-	{"Trash", protonmail.LabelTrash, []string{specialuse.Trash}},
+	{"All Mail", protonmail.LabelAllMail, []string{imap.AllAttr}},
+	{"Archive", protonmail.LabelArchive, []string{imap.ArchiveAttr}},
+	{"Drafts", protonmail.LabelDraft, []string{imap.DraftsAttr}},
+	{"Starred", protonmail.LabelStarred, []string{imap.FlaggedAttr}},
+	{"Spam", protonmail.LabelSpam, []string{imap.JunkAttr}},
+	{"Sent", protonmail.LabelSent, []string{imap.SentAttr}},
+	{"Trash", protonmail.LabelTrash, []string{imap.TrashAttr}},
 }
 
 var systemFlags = []struct {

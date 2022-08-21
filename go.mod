@@ -7,8 +7,6 @@ require (
 	github.com/boltdb/bolt v1.3.1
 	github.com/emersion/go-bcrypt v0.0.0-20170822072041-6e724a1baa63
 	github.com/emersion/go-imap v1.2.1
-	github.com/emersion/go-imap-move v0.0.0-20210907172020-fe4558f9c872
-	github.com/emersion/go-imap-specialuse v0.0.0-20201101201809-1ab93d3d150e
 	github.com/emersion/go-mbox v1.0.2
 	github.com/emersion/go-message v0.15.0
 	github.com/emersion/go-sasl v0.0.0-20211008083017-0b9dcfb154ac // indirect
