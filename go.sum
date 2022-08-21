@@ -7,10 +7,6 @@ github.com/emersion/go-bcrypt v0.0.0-20170822072041-6e724a1baa63/go.mod h1:eRwwJ
 github.com/emersion/go-ical v0.0.0-20200224201310-cd514449c39e/go.mod h1:4xVTBPcT43a1pp3vdaa+FuRdX5XhKCZPpWv7m0z9ByM=
 github.com/emersion/go-imap v1.2.1 h1:+s9ZjMEjOB8NzZMVTM3cCenz2JrQIGGo5j1df19WjTA=
 github.com/emersion/go-imap v1.2.1/go.mod h1:Qlx1FSx2FTxjnjWpIlVNEuX+ylerZQNFE5NsmKFSejY=
-github.com/emersion/go-imap-move v0.0.0-20210907172020-fe4558f9c872 h1:HGBfonz0q/zq7y3ew+4oy4emHSvk6bkmV0mdDG3E77M=
-github.com/emersion/go-imap-move v0.0.0-20210907172020-fe4558f9c872/go.mod h1:QuMaZcKFDVI0yCrnAbPLfbwllz1wtOrZH8/vZ5yzp4w=
-github.com/emersion/go-imap-specialuse v0.0.0-20201101201809-1ab93d3d150e h1:AwVkRMFFUMNu+tx0jchwyoXhS2VClQSzTtByVuzxbsE=
-github.com/emersion/go-imap-specialuse v0.0.0-20201101201809-1ab93d3d150e/go.mod h1:/nybxhI8kXom8Tw6BrHMl42usALvka6meORflnnYwe4=
 github.com/emersion/go-mbox v1.0.2 h1:tE/rT+lEugK9y0myEymCCHnwlZN04hlXPrbKkxRBA5I=
 github.com/emersion/go-mbox v1.0.2/go.mod h1:Yp9IVuuOYLEuMv4yjgDHvhb5mHOcYH6x92Oas3QqEZI=
 github.com/emersion/go-message v0.15.0 h1:urgKGqt2JAc9NFJcgncQcohHdiYb803YTH9OQwHBHIY=
