@@ -32,39 +32,49 @@ type CachedAuth struct {
 func readCachedAuths() (map[string]string, error) {
 	p, err := authFilePath()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get auth file path: %v", err)
 	}
+
 	f, err := os.Open(p)
 	if os.IsNotExist(err) {
 		return nil, nil
 	} else if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open cached auth file: %v", err)
 	}
 	defer f.Close()
 
 	auths := make(map[string]string)
-	err = json.NewDecoder(f).Decode(&auths)
-	return auths, err
+	if err := json.NewDecoder(f).Decode(&auths); err != nil {
+		return nil, fmt.Errorf("failed to read cached auth file: %v", err)
+	}
+
+	return auths, nil
 }
 
 func saveAuths(auths map[string]string) error {
 	p, err := authFilePath()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get auth file path: %v", err)
 	}
 	f, err := os.Create(p)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create cached auth file: %v", err)
 	}
 	defer f.Close()
 
-	return json.NewEncoder(f).Encode(auths)
+	if err := json.NewEncoder(f).Encode(auths); err != nil {
+		return fmt.Errorf("failed to write cached auth file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close cached auth file: %v", err)
+	}
+	return nil
 }
 
 func encrypt(msg []byte, secretKey *[32]byte) (string, error) {
 	var nonce [24]byte
 	if _, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate nonce: %v", err)
 	}
 
 	encrypted := secretbox.Seal(nonce[:], msg, &nonce, secretKey)
@@ -74,7 +84,7 @@ func encrypt(msg []byte, secretKey *[32]byte) (string, error) {
 func decrypt(encryptedString string, secretKey *[32]byte) ([]byte, error) {
 	encrypted, err := base64.StdEncoding.DecodeString(encryptedString)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid encrypted string: %v", err)
 	}
 
 	var nonce [24]byte
@@ -89,7 +99,7 @@ func decrypt(encryptedString string, secretKey *[32]byte) ([]byte, error) {
 func EncryptAndSave(auth *CachedAuth, username string, secretKey *[32]byte) error {
 	cleartext, err := json.Marshal(auth)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to format cached auth: %v", err)
 	}
 
 	encrypted, err := encrypt(cleartext, secretKey)
@@ -151,11 +161,10 @@ func ListUsernames() ([]string, error) {
 func GeneratePassword() (secretKey *[32]byte, password string, err error) {
 	var key [32]byte
 	if _, err = io.ReadFull(rand.Reader, key[:]); err != nil {
-		return
+		return nil, "", fmt.Errorf("failed to generate key: %v", err)
 	}
-	secretKey = &key
 	password = base64.StdEncoding.EncodeToString(key[:])
-	return
+	return &key, password, nil
 }
 
 type session struct {
