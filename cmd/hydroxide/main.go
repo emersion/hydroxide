@@ -291,7 +291,7 @@ func main() {
 				log.Fatal(err)
 			}
 
-			if a.TwoFactor.Enabled == 1 {
+			if a.TwoFactor.Enabled != 0 {
 				if a.TwoFactor.TOTP != 1 {
 					log.Fatal("Only TOTP is supported as a 2FA method")
 				}

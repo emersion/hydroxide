@@ -134,7 +134,7 @@ func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string)
 			return nil, fmt.Errorf("cannot re-authenticate: %v", err)
 		}
 
-		if auth.TwoFactor.Enabled == 1 {
+		if auth.TwoFactor.Enabled != 0 {
 			return nil, fmt.Errorf("cannot re-authenticate: two factor authentication enabled, please login again manually")
 		}
 	} else if err != nil {
