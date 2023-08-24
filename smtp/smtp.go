@@ -367,29 +367,64 @@ func SendMail(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.Enti
 }
 
 type session struct {
-	c            *protonmail.Client
-	u            *protonmail.User
-	privateKeys  openpgp.EntityList
-	addrs        []*protonmail.Address
+	be *backend
+
+	c           *protonmail.Client
+	u           *protonmail.User
+	privateKeys openpgp.EntityList
+	addrs       []*protonmail.Address
+
 	allReceivers []string
 }
 
-func (s *session) Mail(from string, options smtp.MailOptions) error {
+func (s *session) AuthPlain(username, password string) error {
+	c, privateKeys, err := s.be.sessions.Auth(username, password)
+	if err != nil {
+		return err
+	}
+
+	u, err := c.GetCurrentUser()
+	if err != nil {
+		return err
+	}
+
+	addrs, err := c.ListAddresses()
+	if err != nil {
+		return err
+	}
+
+	// TODO: decrypt private keys in u.Addresses
+
+	log.Printf("%s logged in", username)
+	s.c = c
+	s.u = u
+	s.privateKeys = privateKeys
+	s.addrs = addrs
 	return nil
 }
 
-func (s *session) Rcpt(to string) error {
+func (s *session) Mail(from string, options *smtp.MailOptions) error {
+	if s.c == nil {
+		return smtp.ErrAuthRequired
+	}
+	return nil
+}
+
+func (s *session) Rcpt(to string, options *smtp.RcptOptions) error {
+	if s.c == nil {
+		return smtp.ErrAuthRequired
+	}
 	if to == "" {
 		return nil
 	}
-
-	// Seems like github.com/emersion/go-smtp/conn.go:487 removes marks on message
-	// "to" is added into allReceivers blindly
 	s.allReceivers = append(s.allReceivers, to)
 	return nil
 }
 
 func (s *session) Data(r io.Reader) error {
+	if s.c == nil {
+		return smtp.ErrAuthRequired
+	}
 	return SendMail(s.c, s.u, s.privateKeys, s.addrs, s.allReceivers, r)
 }
 
@@ -398,10 +433,7 @@ func (s *session) Reset() {
 }
 
 func (s *session) Logout() error {
-	s.c = nil
-	s.u = nil
-	s.privateKeys = nil
-	s.allReceivers = nil
+	*s = session{be: s.be}
 	return nil
 }
 
@@ -409,36 +441,8 @@ type backend struct {
 	sessions *auth.Manager
 }
 
-func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	c, privateKeys, err := be.sessions.Auth(username, password)
-	if err != nil {
-		return nil, err
-	}
-
-	u, err := c.GetCurrentUser()
-	if err != nil {
-		return nil, err
-	}
-
-	addrs, err := c.ListAddresses()
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: decrypt private keys in u.Addresses
-
-	log.Printf("%s logged in", username)
-
-	return &session{
-		c:           c,
-		u:           u,
-		privateKeys: privateKeys,
-		addrs:       addrs,
-	}, nil
-}
-
-func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
-	return nil, smtp.ErrAuthRequired
+func (be *backend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
+	return &session{be: be}, nil
 }
 
 func New(sessions *auth.Manager) smtp.Backend {

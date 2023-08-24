@@ -10,8 +10,8 @@ require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-mbox v1.0.3
 	github.com/emersion/go-message v0.16.0
-	github.com/emersion/go-sasl v0.0.0-20211008083017-0b9dcfb154ac // indirect
-	github.com/emersion/go-smtp v0.15.0
+	github.com/emersion/go-sasl v0.0.0-20220912192320-0145f2c60ead // indirect
+	github.com/emersion/go-smtp v0.18.0
 	github.com/emersion/go-vcard v0.0.0-20220507122617-d4056df0ec4a
 	github.com/emersion/go-webdav v0.3.2-0.20220524091811-5d845721d8f7
 	golang.org/x/crypto v0.0.0-20220817201139-bc19a97f63c8
