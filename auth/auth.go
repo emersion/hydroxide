@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"golang.org/x/crypto/bcrypt"
@@ -121,6 +122,11 @@ func EncryptAndSave(auth *CachedAuth, username string, secretKey *[32]byte) erro
 }
 
 func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string) (openpgp.EntityList, error) {
+	// reuse AccessToken if it does not expire in the next 30 seconds
+	if time.Now().Add(30 * time.Second).Before(cachedAuth.ExpiresAt) {
+		return c.Unlock(&cachedAuth.Auth, cachedAuth.KeySalts, cachedAuth.MailboxPassword)
+	}
+
 	auth, err := c.AuthRefresh(&cachedAuth.Auth)
 	if apiErr, ok := err.(*protonmail.APIError); ok && apiErr.Code == 10013 {
 		// Invalid refresh token, re-authenticate
