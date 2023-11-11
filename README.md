@@ -40,8 +40,13 @@ Start by installing hydroxide:
 git clone https://github.com/emersion/hydroxide.git
 go build ./cmd/hydroxide
 ```
+or, a little bit simpler via [go install](https://pkg.go.dev/cmd/go#hdr-Compile_and_install_packages_and_dependencies):
 
-Then you'll need to login to ProtonMail via hydroxide, so that hydroxide can
+```shell
+go install github.com/emersion/hydroxide/cmd/hydroxide@latest
+```
+
+Then, you'll need to login to ProtonMail via hydroxide, so that hydroxide can
 retrieve e-mails from ProtonMail. You can do so with this command:
 
 ```shell
