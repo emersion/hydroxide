@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-action.json
 name: Test building with different go versions
+run-name: Test building with different go versions
 on: [push]
 jobs:
   build:
