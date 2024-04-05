@@ -262,7 +262,16 @@ func main() {
 	cmd := flag.Arg(0)
 	switch cmd {
 	case "auth":
-		authCmd.Parse(flag.Args()[1:])
+		var loginPassword, twoFactorTOTPCode string
+
+		authCmd.StringVar(&loginPassword, "password", "", "login password")
+		authCmd.StringVar(&twoFactorTOTPCode, "2fa-totp", "", "TOTP code for two-factor-authentication")
+		args := flag.Args()[1:]
+		err := authCmd.Parse(args)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		username := authCmd.Arg(0)
 		if username == "" {
 			log.Fatal("usage: hydroxide auth <username>")
@@ -279,41 +288,40 @@ func main() {
 				log.Fatal(err)
 			}
 		}*/
+		if loginPassword != "" {
+		} else if pass, err := askPass("Password"); err != nil {
+			log.Fatal(err)
+		} else {
+			loginPassword = string(pass)
+		}
 
-		var loginPassword string
-		if a == nil {
-			if pass, err := askPass("Password"); err != nil {
-				log.Fatal(err)
-			} else {
-				loginPassword = string(pass)
+		authInfo, err := c.AuthInfo(username)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		a, err = c.Auth(username, loginPassword, authInfo)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if a.TwoFactor.Enabled != 0 {
+			if a.TwoFactor.TOTP != 1 {
+				log.Fatal("Only TOTP is supported as a 2FA method")
 			}
 
-			authInfo, err := c.AuthInfo(username)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			a, err = c.Auth(username, loginPassword, authInfo)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			if a.TwoFactor.Enabled != 0 {
-				if a.TwoFactor.TOTP != 1 {
-					log.Fatal("Only TOTP is supported as a 2FA method")
-				}
-
+			if twoFactorTOTPCode == "" {
 				scanner := bufio.NewScanner(os.Stdin)
 				fmt.Printf("2FA TOTP code: ")
 				scanner.Scan()
-				code := scanner.Text()
-
-				scope, err := c.AuthTOTP(code)
-				if err != nil {
-					log.Fatal(err)
-				}
-				a.Scope = scope
+				twoFactorTOTPCode = scanner.Text()
 			}
+
+			scope, err := c.AuthTOTP(twoFactorTOTPCode)
+			if err != nil {
+				log.Fatal(err)
+			}
+			a.Scope = scope
 		}
 
 		var mailboxPassword string
