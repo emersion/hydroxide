@@ -2,18 +2,20 @@
 name: Test building with different go versions
 on: [push]
 jobs:
-  strategy:
-    matrix:
-      go:
-        - "1.13"
-        - "1.14"
-        - "1.15"
-        - "1.16"
-        - "1.17"
-        - "1.18"
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
-      with:
-        go-version: ${{ matrix.go }}
-    - run: go build cmd/hydroxide
+  build:
+    strategy:
+      matrix:
+        go:
+          - "1.13"
+          - "1.14"
+          - "1.15"
+          - "1.16"
+          - "1.17"
+          - "1.18"
+    name: Test building with go-${{ matrix.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - run: go build cmd/hydroxide
