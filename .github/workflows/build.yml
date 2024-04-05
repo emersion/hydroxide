@@ -4,6 +4,7 @@ run-name: Test building with different go versions
 on: [push]
 jobs:
   build:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         go:
