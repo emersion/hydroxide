@@ -221,6 +221,14 @@ Environment variables:
 	HYDROXIDE_BRIDGE_PASS	Don't prompt for the bridge password, use this variable instead
 `
 
+const authUsage = `usage: hydroxide auth <username>
+
+Environment variables:
+	HYDROXIDE_LOGIN_PASS Don't prompt for your login password, use this variable instead
+	HYDROXIDE_2FA_TOTP Don't prompt for your one-time-password, use this variable instead
+	HYDROXIDE_MAILBOX_PASS Don't prompt for your mailbox password, use this variable instead
+`
+
 func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug logs")
 	flag.StringVar(&apiEndpoint, "api-endpoint", defaultAPIEndpoint, "ProtonMail API endpoint")
@@ -243,6 +251,12 @@ func main() {
 	tlsClientCA := flag.String("tls-client-ca", "", "If set, clients must provide a certificate signed by the given CA")
 
 	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
+	authCmd.Usage = func() {
+		fmt.Print(authUsage)
+	}
+	authCmd.Usage = func() {
+		fmt.Print(authUsage)
+	}
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
 	importMessagesCmd := flag.NewFlagSet("import-messages", flag.ExitOnError)
 	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
@@ -262,16 +276,9 @@ func main() {
 	cmd := flag.Arg(0)
 	switch cmd {
 	case "auth":
-		var loginPassword, twoFactorTOTPCode string
-
-		authCmd.StringVar(&loginPassword, "password", "", "login password")
-		authCmd.StringVar(&twoFactorTOTPCode, "2fa-totp", "", "TOTP code for two-factor-authentication")
-		args := flag.Args()[1:]
-		err := authCmd.Parse(args)
-		if err != nil {
+		if err := authCmd.Parse(flag.Args()[1:]); err != nil {
 			log.Fatal(err)
 		}
-
 		username := authCmd.Arg(0)
 		if username == "" {
 			log.Fatal("usage: hydroxide auth <username>")
@@ -288,6 +295,9 @@ func main() {
 				log.Fatal(err)
 			}
 		}*/
+
+		loginPassword := os.Getenv("HYDROXIDE_LOGIN_PASS")
+
 		if loginPassword != "" {
 		} else if pass, err := askPass("Password"); err != nil {
 			log.Fatal(err)
@@ -310,14 +320,15 @@ func main() {
 				log.Fatal("Only TOTP is supported as a 2FA method")
 			}
 
-			if twoFactorTOTPCode == "" {
+			code := os.Getenv("HYDROXIDE_2FA_TOTP")
+			if code == "" {
 				scanner := bufio.NewScanner(os.Stdin)
 				fmt.Printf("2FA TOTP code: ")
 				scanner.Scan()
-				twoFactorTOTPCode = scanner.Text()
+				code = scanner.Text()
 			}
 
-			scope, err := c.AuthTOTP(twoFactorTOTPCode)
+			scope, err := c.AuthTOTP(code)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -333,7 +344,9 @@ func main() {
 			if a.PasswordMode == protonmail.PasswordTwo {
 				prompt = "Mailbox password"
 			}
-			if pass, err := askPass(prompt); err != nil {
+			mailboxPassword := os.Getenv("HYDROXIDE_MAILBOX_PASS")
+			if mailboxPassword != "" {
+			} else if pass, err := askPass(prompt); err != nil {
 				log.Fatal(err)
 			} else {
 				mailboxPassword = string(pass)
