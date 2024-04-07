@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -16,6 +17,7 @@ import (
 	imapserver "github.com/emersion/go-imap/server"
 	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-smtp"
+	"github.com/google/uuid"
 	"golang.org/x/term"
 
 	"github.com/emersion/hydroxide/auth"
@@ -31,6 +33,7 @@ import (
 
 const (
 	defaultAPIEndpoint = "https://mail.proton.me/api"
+	torAPIEndpoint     = "https://mail.protonmailrmez3lotccipshtkleegetolb73fuirgj7r4o4vfu7ozyd.onion/api"
 	defaultAppVersion  = "Other"
 )
 
@@ -38,13 +41,54 @@ var (
 	debug       bool
 	apiEndpoint string
 	appVersion  string
+	proxy       string
+	httpClient  http.Client
+	tor         bool
 )
 
+func makeHTTPClientFromProxy(proxyArg string) (*http.Client, error) {
+	fmtProxy := ""
+	client := &http.Client{}
+	if tor {
+		un, err := uuid.NewRandom()
+		if err != nil {
+			return nil, err
+		}
+		fmtProxy = fmt.Sprintf("socks5://hydroxide_%s::@%s", un, proxyArg)
+
+	} else {
+		fmtProxy = fmt.Sprintf("socks5://%s", proxyArg)
+	}
+
+	proxy, err := url.Parse(fmtProxy)
+	if err != nil {
+		return nil, err
+	}
+
+	tr := &http.Transport{
+		Proxy: http.ProxyURL(proxy),
+	}
+
+	client = &http.Client{Transport: tr}
+	return client, nil
+}
+
 func newClient() *protonmail.Client {
+	httpClient := &http.Client{}
+	if proxy != "" {
+		proxiedClient, err := makeHTTPClientFromProxy(proxy)
+		if err != nil {
+			log.Fatal("Error creating proxied http.Client: ", err)
+		}
+
+		httpClient = proxiedClient
+	}
+
 	return &protonmail.Client{
 		RootURL:    apiEndpoint,
 		AppVersion: appVersion,
 		Debug:      debug,
+		HTTPClient: httpClient,
 	}
 }
 
@@ -216,6 +260,10 @@ Global options:
 		Path to the certificate key to use for incoming connections (Optional)
 	-tls-client-ca /path/to/ca.pem
 		If set, clients must provide a certificate signed by the given CA (Optional)
+	-proxy
+		SOCKS5 proxy to use for client connections
+	-tor
+		If set, connct to ProtonMail over Tor
 
 Environment variables:
 	HYDROXIDE_BRIDGE_PASS	Don't prompt for the bridge password, use this variable instead
@@ -225,6 +273,8 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug logs")
 	flag.StringVar(&apiEndpoint, "api-endpoint", defaultAPIEndpoint, "ProtonMail API endpoint")
 	flag.StringVar(&appVersion, "app-version", defaultAppVersion, "ProtonMail app version")
+	flag.StringVar(&proxy, "proxy", "", "SOCKS5 proxy to use for client connections")
+	flag.BoolVar(&tor, "tor", false, "If set, connect to ProtonMail over Tor")
 
 	smtpHost := flag.String("smtp-host", "127.0.0.1", "Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	smtpPort := flag.String("smtp-port", "1025", "SMTP port on which hydroxide listens, defaults to 1025")
@@ -253,6 +303,15 @@ func main() {
 	}
 
 	flag.Parse()
+
+	if tor && proxy == "" {
+		log.Fatal("Need -proxy to connect to ProtonMail over Tor")
+	}
+
+	if tor {
+		log.Println("Connecting to ProtonMail over Tor")
+		apiEndpoint = torAPIEndpoint
+	}
 
 	tlsConfig, err := config.TLS(*tlsCert, *tlsCertKey, *tlsClientCA)
 	if err != nil {
