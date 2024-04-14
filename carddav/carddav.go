@@ -388,5 +388,5 @@ func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-c
 		go b.receiveEvents(events)
 	}
 
-	return &carddav.Handler{b}
+	return &carddav.Handler{Backend: b}
 }
