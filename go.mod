@@ -9,7 +9,7 @@ require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-mbox v1.0.3
 	github.com/emersion/go-message v0.17.0
-	github.com/emersion/go-smtp v0.19.0
+	github.com/emersion/go-smtp v0.21.1
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
 	github.com/emersion/go-webdav v0.3.2-0.20220524091811-5d845721d8f7
 	golang.org/x/crypto v0.15.0
