@@ -85,6 +85,9 @@ func (r *Prompter) askPass(prompt string) (string, error) {
 }
 
 func askBridgePass() (string, error) {
+	if v := os.Getenv("HYDROXIDE_BRIDGE_PASS"); v != "" {
+		return v, nil
+	}
 	return newPrompter().askPass("Bridge password")
 }
 
