@@ -61,10 +61,6 @@ func newPrompter() *Prompter {
 	return &Prompter{}
 }
 
-func askPass(prompt string) (string, error) {
-	return newPrompter().askPass(prompt)
-}
-
 func (r *Prompter) askPass(prompt string) (string, error) {
 	if r.scanner != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Reading password from stdin.\nk")
@@ -92,7 +88,7 @@ func askBridgePass() (string, error) {
 	if v := os.Getenv("HYDROXIDE_BRIDGE_PASS"); v != "" {
 		return v, nil
 	}
-	b, err := askPass("Bridge password")
+	b, err := newPrompter().askPass("Bridge password")
 	return string(b), err
 }
 
