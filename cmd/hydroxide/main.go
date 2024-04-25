@@ -303,11 +303,10 @@ func main() {
 			}
 		}*/
 		prompter := newPrompter()
-		pass, err := prompter.askPass("Password")
+		loginPassword, err := prompter.askPass("Password")
 		if err != nil {
 			log.Fatal(err)
 		}
-		loginPassword := string(pass)
 
 		authInfo, err := c.AuthInfo(username)
 		if err != nil {
