@@ -11,6 +11,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/emersion/go-message/mail"
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 
 	"github.com/emersion/hydroxide/auth"
@@ -377,7 +378,16 @@ type session struct {
 	allReceivers []string
 }
 
-func (s *session) AuthPlain(username, password string) error {
+var _ interface {
+	smtp.Session
+	smtp.AuthSession
+} = (*session)(nil)
+
+func (s *session) AuthMechanisms() []string {
+	return []string{sasl.Plain}
+}
+
+func (s *session) authPlain(username, password string) error {
 	c, privateKeys, err := s.be.sessions.Auth(username, password)
 	if err != nil {
 		return err
@@ -401,6 +411,15 @@ func (s *session) AuthPlain(username, password string) error {
 	s.privateKeys = privateKeys
 	s.addrs = addrs
 	return nil
+}
+
+func (s *session) Auth(mech string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(identity, username, password string) error {
+		if identity != "" && identity != username {
+			return fmt.Errorf("invalid SASL PLAIN identity")
+		}
+		return s.authPlain(username, password)
+	}), nil
 }
 
 func (s *session) Mail(from string, options *smtp.MailOptions) error {
