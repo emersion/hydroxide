@@ -85,11 +85,7 @@ func (r *Prompter) askPass(prompt string) (string, error) {
 }
 
 func askBridgePass() (string, error) {
-	if v := os.Getenv("HYDROXIDE_BRIDGE_PASS"); v != "" {
-		return v, nil
-	}
-	b, err := newPrompter().askPass("Bridge password")
-	return string(b), err
+	return newPrompter().askPass("Bridge password")
 }
 
 func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsConfig *tls.Config) error {
