@@ -48,23 +48,44 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func askPass(prompt string) ([]byte, error) {
-	f := os.Stdin
-	if !term.IsTerminal(int(f.Fd())) {
-		// This can happen if stdin is used for piping data
-		// TODO: the following assumes Unix
-		var err error
-		if f, err = os.Open("/dev/tty"); err != nil {
-			return nil, err
+type Prompter struct {
+	scanner *bufio.Scanner
+}
+
+func newPrompter() *Prompter {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return &Prompter{
+			scanner: bufio.NewScanner(os.Stdin),
 		}
-		defer f.Close()
+	}
+	return &Prompter{}
+}
+
+func askPass(prompt string) (string, error) {
+	return newPrompter().askPass(prompt)
+}
+
+func (r *Prompter) askPass(prompt string) (string, error) {
+	if r.scanner != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Reading password from stdin.\nk")
+		if !r.scanner.Scan() {
+			if err := r.scanner.Err(); err != nil {
+				return "", err
+			}
+			return "", io.ErrUnexpectedEOF
+		}
+		password := r.scanner.Text()
+		if len(password) == 0 {
+			return password, fmt.Errorf("zero length password")
+		}
+		return password, nil
 	}
 	fmt.Fprintf(os.Stderr, "%v: ", prompt)
-	b, err := term.ReadPassword(int(f.Fd()))
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "\n")
 	}
-	return b, err
+	return string(b), err
 }
 
 func askBridgePass() (string, error) {
@@ -221,14 +242,6 @@ Environment variables:
 	HYDROXIDE_BRIDGE_PASS	Don't prompt for the bridge password, use this variable instead
 `
 
-const authUsage = `usage: hydroxide auth <username>
-
-Environment variables:
-	HYDROXIDE_LOGIN_PASS Don't prompt for your login password, use this variable instead
-	HYDROXIDE_2FA_TOTP Don't prompt for your one-time-password, use this variable instead
-	HYDROXIDE_MAILBOX_PASS Don't prompt for your mailbox password, use this variable instead
-`
-
 func main() {
 	flag.BoolVar(&debug, "debug", false, "Enable debug logs")
 	flag.StringVar(&apiEndpoint, "api-endpoint", defaultAPIEndpoint, "ProtonMail API endpoint")
@@ -251,12 +264,6 @@ func main() {
 	tlsClientCA := flag.String("tls-client-ca", "", "If set, clients must provide a certificate signed by the given CA")
 
 	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
-	authCmd.Usage = func() {
-		fmt.Print(authUsage)
-	}
-	authCmd.Usage = func() {
-		fmt.Print(authUsage)
-	}
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
 	importMessagesCmd := flag.NewFlagSet("import-messages", flag.ExitOnError)
 	exportMessagesCmd := flag.NewFlagSet("export-messages", flag.ExitOnError)
@@ -295,15 +302,12 @@ func main() {
 				log.Fatal(err)
 			}
 		}*/
-
-		loginPassword := os.Getenv("HYDROXIDE_LOGIN_PASS")
-
-		if loginPassword != "" {
-		} else if pass, err := askPass("Password"); err != nil {
+		prompter := newPrompter()
+		pass, err := prompter.askPass("Password")
+		if err != nil {
 			log.Fatal(err)
-		} else {
-			loginPassword = string(pass)
 		}
+		loginPassword := string(pass)
 
 		authInfo, err := c.AuthInfo(username)
 		if err != nil {
@@ -320,12 +324,9 @@ func main() {
 				log.Fatal("Only TOTP is supported as a 2FA method")
 			}
 
-			code := os.Getenv("HYDROXIDE_2FA_TOTP")
-			if code == "" {
-				scanner := bufio.NewScanner(os.Stdin)
-				fmt.Printf("2FA TOTP code: ")
-				scanner.Scan()
-				code = scanner.Text()
+			code, err := prompter.askPass("2FA TOTP code")
+			if err != nil {
+				log.Fatal(err)
 			}
 
 			scope, err := c.AuthTOTP(code)
@@ -344,12 +345,10 @@ func main() {
 			if a.PasswordMode == protonmail.PasswordTwo {
 				prompt = "Mailbox password"
 			}
-			mailboxPassword := os.Getenv("HYDROXIDE_MAILBOX_PASS")
-			if mailboxPassword != "" {
-			} else if pass, err := askPass(prompt); err != nil {
+
+			mailboxPassword, err = prompter.askPass(prompt)
+			if err != nil {
 				log.Fatal(err)
-			} else {
-				mailboxPassword = string(pass)
 			}
 		}
 
