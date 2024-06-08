@@ -378,7 +378,17 @@ func (mbox *mailbox) matchMessage(seqNum, uid uint32, msg *protonmail.Message, c
 		}
 	}
 
-	// TODO: c.Body, c.Text
+	for _, e := range c.Body {
+		if !matchString(msg.Body, e) {
+			return false
+		}
+	}
+
+	for _, e := range c.Text {
+		if !matchString(msg.Body, e) && !matchString(msg.Header, e) {
+			return false
+		}
+	}
 
 	for _, e := range c.Or {
 		if !mbox.matchMessage(seqNum, uid, msg, e[0]) && !mbox.matchMessage(seqNum, uid, msg, e[1]) {
