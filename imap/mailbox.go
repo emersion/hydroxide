@@ -302,104 +302,123 @@ func matchString(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
+func (mbox *mailbox) matchMessage(seqNum, uid uint32, msg *protonmail.Message, c *imap.SearchCriteria) bool {
+	if c.SeqNum != nil && !c.SeqNum.Contains(seqNum) {
+		return false
+	}
+	if c.Uid != nil && !c.Uid.Contains(uid) {
+		return false
+	}
+
+	flags := make(map[string]bool)
+	for _, flag := range mbox.fetchFlags(msg) {
+		flags[flag] = true
+	}
+	for _, f := range c.WithFlags {
+		if !flags[f] {
+			return false
+		}
+	}
+	for _, f := range c.WithoutFlags {
+		if flags[f] {
+			return false
+		}
+	}
+
+	date := msg.Time.Time().Round(24 * time.Hour)
+	if !c.Since.IsZero() && !date.After(c.Since) {
+		return false
+	}
+
+	if !c.Before.IsZero() && !date.Before(c.Before) {
+		return false
+	}
+
+	// TODO: this date should be from the Date MIME header
+	if !c.SentBefore.IsZero() && !date.Before(c.SentBefore) {
+		return false
+	}
+
+	if !c.SentSince.IsZero() && !date.After(c.SentSince) {
+		return false
+	}
+
+	if c.Larger > 0 && uint32(msg.Size) < c.Larger {
+		return false
+	}
+
+	if c.Smaller > 0 && uint32(msg.Size) > c.Smaller {
+		return false
+	}
+
+	h := messageHeader(msg)
+	for key, wantValues := range c.Header {
+		fields := h.FieldsByKey(key)
+		var values []string
+		for fields.Next() {
+			values = append(values, fields.Value())
+		}
+
+		for _, wantValue := range wantValues {
+			if wantValue == "" && len(values) == 0 {
+				return false
+			}
+			if wantValue != "" {
+				ok := false
+				for _, v := range values {
+					if matchString(v, wantValue) {
+						ok = true
+						break
+					}
+				}
+				if !ok {
+					return false
+				}
+			}
+		}
+	}
+
+	// TODO: c.Body, c.Text
+
+	for _, e := range c.Or {
+		if !mbox.matchMessage(seqNum, uid, msg, e[0]) && !mbox.matchMessage(seqNum, uid, msg, e[1]) {
+			return false
+		}
+	}
+
+	for _, e := range c.Not {
+		if mbox.matchMessage(seqNum, uid, msg, e) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (mbox *mailbox) SearchMessages(isUID bool, c *imap.SearchCriteria) ([]uint32, error) {
 	if err := mbox.init(); err != nil {
 		return nil, err
 	}
 
-	// TODO: c.Not, c.Or
-	if c.Not != nil || c.Or != nil {
-		return nil, errors.New("search queries with NOT or OR clauses are not yet implemented")
-	}
-
 	var results []uint32
 	err := mbox.db.ForEach(func(seqNum, uid uint32, apiID string) error {
-		if c.SeqNum != nil && !c.SeqNum.Contains(seqNum) {
-			return nil
-		}
-		if c.Uid != nil && !c.Uid.Contains(uid) {
-			return nil
-		}
-
 		// TODO: fetch message from local DB only if needed
 		msg, err := mbox.u.db.Message(apiID)
 		if err != nil {
 			return err
 		}
 
-		flags := make(map[string]bool)
-		for _, flag := range mbox.fetchFlags(msg) {
-			flags[flag] = true
-		}
-		for _, f := range c.WithFlags {
-			if !flags[f] {
-				return nil
-			}
-		}
-		for _, f := range c.WithoutFlags {
-			if flags[f] {
-				return nil
+		if mbox.matchMessage(seqNum, uid, msg, c) {
+			if isUID {
+				results = append(results, uid)
+			} else {
+				results = append(results, seqNum)
 			}
 		}
 
-		date := msg.Time.Time().Round(24 * time.Hour)
-		if !c.Since.IsZero() && !date.After(c.Since) {
-			return nil
-		}
-		if !c.Before.IsZero() && !date.Before(c.Before) {
-			return nil
-		}
-		// TODO: this date should be from the Date MIME header
-		if !c.SentBefore.IsZero() && !date.Before(c.SentBefore) {
-			return nil
-		}
-		if !c.SentSince.IsZero() && !date.After(c.SentSince) {
-			return nil
-		}
-
-		h := messageHeader(msg)
-		for key, wantValues := range c.Header {
-			fields := h.FieldsByKey(key)
-			var values []string
-			for fields.Next() {
-				values = append(values, fields.Value())
-			}
-
-			for _, wantValue := range wantValues {
-				if wantValue == "" && len(values) == 0 {
-					return nil
-				}
-				if wantValue != "" {
-					ok := false
-					for _, v := range values {
-						if matchString(v, wantValue) {
-							ok = true
-							break
-						}
-					}
-					if !ok {
-						return nil
-					}
-				}
-			}
-		}
-
-		// TODO: c.Body, c.Text
-
-		if c.Larger > 0 && uint32(msg.Size) < c.Larger {
-			return nil
-		}
-		if c.Smaller > 0 && uint32(msg.Size) > c.Smaller {
-			return nil
-		}
-
-		if isUID {
-			results = append(results, uid)
-		} else {
-			results = append(results, seqNum)
-		}
 		return nil
 	})
+
 	if err != nil {
 		return nil, err
 	}
