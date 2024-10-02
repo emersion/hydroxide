@@ -6,6 +6,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.0.0
 	github.com/boltdb/bolt v1.3.1
 	github.com/emersion/go-bcrypt v0.0.0-20170822072041-6e724a1baa63
+	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-mbox v1.0.3
 	github.com/emersion/go-message v0.18.1
@@ -15,11 +16,11 @@ require (
 	github.com/emersion/go-webdav v0.5.0
 	golang.org/x/crypto v0.22.0
 	golang.org/x/term v0.19.0
-	github.com/emersion/go-ical v0.0.0-20240127095438-fc1c9d8fb2b6
 )
 
 require (
 	github.com/cloudflare/circl v1.3.7 // indirect
+	github.com/teambition/rrule-go v1.8.2 // indirect
 	golang.org/x/sys v0.19.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 )

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp"
 )
 
 const calendarPath = "/calendar/v1"
@@ -94,7 +94,7 @@ type CalendarEventCard struct {
 	Author    string
 }
 
-func (card *CalendarEventCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails, error) {
+func (card *CalendarEventCard) Read(keyring openpgp.KeyRing, keyPacket string) (*openpgp.MessageDetails, error) {
 	if !card.Type.Encrypted() {
 		md := &openpgp.MessageDetails{
 			IsEncrypted:    false,
@@ -119,7 +119,35 @@ func (card *CalendarEventCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDe
 	}
 
 	// TODO: read using SharedKeyPacket if any
+	/*keyPacketData, err := base64.StdEncoding.DecodeString(keyPacket)
+	if err != nil {
+		return nil, err
+	}
 
+	packetReader := packet.NewReader(bytes.NewReader(keyPacketData))
+	pkt, err := packetReader.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	var key *packet.EncryptedKey
+		switch pkt.(type) {
+		case *packet.EncryptedKey:
+			for _, pKey := range keyring.DecryptionKeys() {
+				if !pKey.PrivateKey.Encrypted {
+					key = pkt.(*packet.EncryptedKey)
+					err := key.Decrypt(pKey.PrivateKey, nil)
+					if err != nil {
+						return nil, err
+					}
+					break
+				}
+			}
+		default:
+			return nil, errors.New("keyPacket packet is not of type packet.EncryptedKey")
+		}*/
+	// cannot decrypt encrypted session key for key id fc3c4268d3e4771b with private key id 882f519cbeca1e84
+	// getCalendarEventDecryptionKeys getsharedsessionkey
 	ciphertext := base64.NewDecoder(base64.StdEncoding, strings.NewReader(card.Data))
 	md, err := openpgp.ReadMessage(ciphertext, keyring, nil, nil)
 	if err != nil {
@@ -171,12 +199,15 @@ type CalendarEventFilter struct {
 
 func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilter) ([]*CalendarEvent, error) {
 	v := url.Values{}
-	v.Set("Start", strconv.FormatInt(int64(filter.Start), 10))
-	v.Set("End", strconv.FormatInt(int64(filter.End), 10))
-	v.Set("Timezone", filter.Timezone)
-	v.Set("Page", strconv.Itoa(filter.Page))
-	if filter.PageSize > 0 {
-		v.Set("PageSize", strconv.Itoa(filter.PageSize))
+
+	if filter != nil {
+		v.Set("Start", strconv.FormatInt(int64(filter.Start), 10))
+		v.Set("End", strconv.FormatInt(int64(filter.End), 10))
+		v.Set("Timezone", filter.Timezone)
+		v.Set("Page", strconv.Itoa(filter.Page))
+		if filter.PageSize > 0 {
+			v.Set("PageSize", strconv.Itoa(filter.PageSize))
+		}
 	}
 
 	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/events?"+v.Encode(), nil)

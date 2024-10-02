@@ -83,11 +83,10 @@ func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.Contac
 
 func parseAddressObjectPath(p string) (string, error) {
 	dirname, filename := path.Split(p)
-	_ = dirname
 	ext := path.Ext(filename)
-	//if dirname != "/contacts/default/" || ext != ".vcf" {
-	//	return "", errNotFound
-	//}
+	if dirname != "/contacts/default/" || ext != ".vcf" {
+		return "", errNotFound
+	}
 	return strings.TrimSuffix(filename, ext), nil
 }
 

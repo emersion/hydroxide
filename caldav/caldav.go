@@ -1,14 +1,14 @@
 package caldav
 
 import (
+	"context"
 	"fmt"
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav/caldav"
 	"io"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/emersion/go-ical"
-	"github.com/emersion/go-webdav/caldav"
-	"golang.org/x/crypto/openpgp"
 
 	"github.com/emersion/hydroxide/protonmail"
 )
@@ -19,6 +19,10 @@ type backend struct {
 	c           *protonmail.Client
 	cal         *protonmail.Calendar
 	privateKeys openpgp.EntityList
+}
+
+func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
+	// TODO
 }
 
 func (b *backend) calendar() (*protonmail.Calendar, error) {
@@ -56,10 +60,9 @@ func (b *backend) toCalendarObject(event *protonmail.CalendarEvent, req *caldav.
 	// TODO: handle req
 
 	merged := ical.NewEvent()
-
 	// TODO: handle CalendarEvents, AttendeesEvents and PersonalEvents
 	for _, c := range event.SharedEvents {
-		md, err := c.Read(b.privateKeys)
+		md, err := c.Read(b.privateKeys, event.SharedKeyPacket)
 		if err != nil {
 			return nil, err
 		}
@@ -100,15 +103,42 @@ func (b *backend) toCalendarObject(event *protonmail.CalendarEvent, req *caldav.
 	}, nil
 }
 
-func (b *backend) GetCalendarObject(path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	panic("TODO")
+func (b *backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
+	return "", nil
 }
 
-func (b *backend) ListCalendarObjects(req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	panic("TODO")
+func (b *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
+	return nil, nil
 }
 
-func (b *backend) QueryCalendarObjects(query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+func (b *backend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
+	return nil, nil
+}
+
+func (b *backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
+	cal, err := b.calendar()
+	if err != nil {
+		return nil, err
+	}
+
+	events, err := b.c.ListCalendarEvents(cal.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	co, err := b.toCalendarObject(events[0], nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return co, nil
+}
+
+func (b *backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+	return nil, nil
+}
+
+func (b *backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
 	if query.CompFilter.Name != ical.CompCalendar {
 		return nil, fmt.Errorf("hydroxide/caldav: expected toplevel comp to be VCALENDAR")
 	}
@@ -143,8 +173,16 @@ func (b *backend) QueryCalendarObjects(query *caldav.CalendarQuery) ([]caldav.Ca
 	return cos, nil
 }
 
-func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
-	// TODO
+func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (loc string, err error) {
+	return "", nil
+}
+
+func (b *backend) DeleteCalendarObject(ctx context.Context, path string) error {
+	return nil
+}
+
+func (b *backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
+	return "/", nil
 }
 
 func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-chan *protonmail.Event) http.Handler {
@@ -161,5 +199,5 @@ func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-c
 		go b.receiveEvents(events)
 	}
 
-	return &caldav.Handler{b}
+	return &caldav.Handler{Backend: b}
 }
