@@ -7,7 +7,6 @@ import (
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
 	"io"
-	"io/ioutil"
 	"net/http"
 
 	"github.com/emersion/hydroxide/protonmail"
@@ -18,6 +17,7 @@ import (
 type backend struct {
 	c           *protonmail.Client
 	cal         *protonmail.Calendar
+	calKr       openpgp.KeyRing
 	privateKeys openpgp.EntityList
 }
 
@@ -56,13 +56,13 @@ func formatCalendarObjectPath(id string) string {
 	return "/" + id + ".ics"
 }
 
-func (b *backend) toCalendarObject(event *protonmail.CalendarEvent, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
+func toCalendarObject(event *protonmail.CalendarEvent, calKr openpgp.KeyRing, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
 	// TODO: handle req
 
 	merged := ical.NewEvent()
 	// TODO: handle CalendarEvents, AttendeesEvents and PersonalEvents
 	for _, c := range event.SharedEvents {
-		md, err := c.Read(b.privateKeys, event.SharedKeyPacket)
+		md, err := c.Read(userKr, calKr, event.SharedKeyPacket)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +74,11 @@ func (b *backend) toCalendarObject(event *protonmail.CalendarEvent, req *caldav.
 
 		// The signature can be checked only if md.UnverifiedBody is consumed until
 		// EOF
-		io.Copy(ioutil.Discard, md.UnverifiedBody)
+		_, err = io.Copy(io.Discard, md.UnverifiedBody)
+		if err != nil {
+			return nil, err
+		}
+
 		if err := md.SignatureError; err != nil {
 			return nil, err
 		}
@@ -121,12 +125,22 @@ func (b *backend) GetCalendarObject(ctx context.Context, path string, req *calda
 		return nil, err
 	}
 
+	bootstrap, err := b.c.BootstrapCalendar(cal.ID)
+	if err != nil {
+		return nil, err
+	}
+	calKr, err := bootstrap.DecryptKeyring(b.privateKeys)
+	if err != nil {
+		return nil, err
+	}
+	_ = calKr
+
 	events, err := b.c.ListCalendarEvents(cal.ID, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	co, err := b.toCalendarObject(events[0], nil)
+	co, err := toCalendarObject(events[0], nil) // todo calkr
 	if err != nil {
 		return nil, err
 	}

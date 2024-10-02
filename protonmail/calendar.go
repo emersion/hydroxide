@@ -2,6 +2,8 @@ package protonmail
 
 import (
 	"encoding/base64"
+	"errors"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,6 +24,48 @@ type Calendar struct {
 	Color       string
 	Display     int
 	Flags       CalendarFlags
+}
+
+type CalendarBootstrap struct {
+	Keys       []CalendarKey
+	Passphrase CalendarPassphrase
+	Members    []CalendarMember
+	// ... CalendarSettings
+}
+
+type CalendarKey struct {
+	ID           string
+	PrivateKey   string
+	PassphraseID string
+	Flags        int
+	CalendarID   string
+}
+
+type CalendarPassphrase struct {
+	Flags             int
+	ID                string
+	MemberPassphrases []CalendarMemberPassphrase
+	CalendarID        string
+}
+
+type CalendarMember struct {
+	ID          string
+	Permissions int
+	Email       string
+	AddressID   string
+	CalendarID  string
+	Name        string
+	Description string
+	Color       string
+	Display     int
+	Priority    int
+	Flags       int
+}
+
+type CalendarMemberPassphrase struct {
+	MemberID   string
+	Passphrase string
+	Signature  string
 }
 
 type CalendarEventPermissions int
@@ -94,7 +138,82 @@ type CalendarEventCard struct {
 	Author    string
 }
 
-func (card *CalendarEventCard) Read(keyring openpgp.KeyRing, keyPacket string) (*openpgp.MessageDetails, error) {
+func findMemberFromKeyring(members []CalendarMember, kr openpgp.KeyRing) (*CalendarMember, error) {
+	for _, _member := range members {
+		for _, userKey := range kr.DecryptionKeys() {
+			for _, identity := range userKey.Entity.Identities {
+				if _member.Email == identity.UserId.Email {
+					return &_member, nil
+				}
+			}
+		}
+	}
+	return nil, errors.New("could not find a CalendarMember for keyring")
+}
+
+func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (openpgp.KeyRing, error) {
+	var calKr openpgp.EntityList
+	for _, key := range bootstrap.Keys {
+		var passphrase *CalendarMemberPassphrase
+
+		member, err := findMemberFromKeyring(bootstrap.Members, userKr)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, _passphrase := range bootstrap.Passphrase.MemberPassphrases {
+			if _passphrase.MemberID == member.ID {
+				passphrase = &_passphrase
+				break
+			}
+		}
+		if passphrase == nil {
+			return nil, errors.New("could not find a MemberPassphrase for MemberID")
+		}
+
+		passphraseEnc, err := armor.Decode(strings.NewReader(passphrase.Passphrase))
+		if err != nil {
+			return nil, err
+		}
+
+		md, err := openpgp.ReadMessage(passphraseEnc.Body, userKr, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		passphraseBytes, err := io.ReadAll(md.UnverifiedBody)
+		if err != nil {
+			return nil, err
+		}
+
+		/*		signatureData, err := armor.Decode(strings.NewReader(passphrase.Signature))
+				if err != nil {
+					return nil, err
+				}
+				_, err = openpgp.CheckArmoredDetachedSignature(userKr, bytes.NewReader(passphraseBytes), signatureData.Body, nil)
+				if err != nil {
+					return nil, err
+				}*/
+
+		keyKr, err := openpgp.ReadArmoredKeyRing(strings.NewReader(key.PrivateKey))
+		if err != nil {
+			return nil, err
+		}
+
+		for _, decKey := range keyKr.DecryptionKeys() {
+			err = decKey.PrivateKey.Decrypt(passphraseBytes)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		calKr = append(calKr, keyKr...)
+	}
+	return calKr, nil
+}
+
+func (card *CalendarEventCard) Read(userKr openpgp.KeyRing, calKr openpgp.KeyRing, keyPacket string) (*openpgp.MessageDetails, error) {
+	// TODO: test
 	if !card.Type.Encrypted() {
 		md := &openpgp.MessageDetails{
 			IsEncrypted:    false,
@@ -108,7 +227,7 @@ func (card *CalendarEventCard) Read(keyring openpgp.KeyRing, keyPacket string) (
 
 		signed := strings.NewReader(card.Data)
 		signature := strings.NewReader(card.Signature)
-		signer, err := openpgp.CheckArmoredDetachedSignature(keyring, signed, signature, nil)
+		signer, err := openpgp.CheckArmoredDetachedSignature(userKr, signed, signature, nil)
 		md.IsSigned = true
 		md.SignatureError = err
 		if signer != nil {
@@ -118,22 +237,17 @@ func (card *CalendarEventCard) Read(keyring openpgp.KeyRing, keyPacket string) (
 		return md, nil
 	}
 
-	// TODO: read using SharedKeyPacket if any
-	/*keyPacketData, err := base64.StdEncoding.DecodeString(keyPacket)
-	if err != nil {
-		return nil, err
-	}
+	keyPacketData := base64.NewDecoder(base64.StdEncoding, strings.NewReader(keyPacket))
+	/*	packetReader := packet.NewReader(keyPacketData)
+		pkt, err := packetReader.Next()
+		if err != nil {
+			return nil, err
+		}
 
-	packetReader := packet.NewReader(bytes.NewReader(keyPacketData))
-	pkt, err := packetReader.Next()
-	if err != nil {
-		return nil, err
-	}
-
-	var key *packet.EncryptedKey
+		var key *packet.EncryptedKey
 		switch pkt.(type) {
 		case *packet.EncryptedKey:
-			for _, pKey := range keyring.DecryptionKeys() {
+			for _, pKey := range userKr.DecryptionKeys() {
 				if !pKey.PrivateKey.Encrypted {
 					key = pkt.(*packet.EncryptedKey)
 					err := key.Decrypt(pKey.PrivateKey, nil)
@@ -146,10 +260,10 @@ func (card *CalendarEventCard) Read(keyring openpgp.KeyRing, keyPacket string) (
 		default:
 			return nil, errors.New("keyPacket packet is not of type packet.EncryptedKey")
 		}*/
-	// cannot decrypt encrypted session key for key id fc3c4268d3e4771b with private key id 882f519cbeca1e84
-	// getCalendarEventDecryptionKeys getsharedsessionkey
+
 	ciphertext := base64.NewDecoder(base64.StdEncoding, strings.NewReader(card.Data))
-	md, err := openpgp.ReadMessage(ciphertext, keyring, nil, nil)
+	msg := io.MultiReader(keyPacketData, ciphertext)
+	md, err := openpgp.ReadMessage(msg, calKr, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +272,7 @@ func (card *CalendarEventCard) Read(keyring openpgp.KeyRing, keyPacket string) (
 		r := &detachedSignatureReader{
 			md:        md,
 			signature: strings.NewReader(card.Signature),
-			keyring:   keyring,
+			keyring:   userKr,
 		}
 		r.body = io.TeeReader(md.UnverifiedBody, &r.signed)
 
@@ -189,6 +303,23 @@ func (c *Client) ListCalendars(page, pageSize int) ([]*Calendar, error) {
 	}
 
 	return respData.Calendars, nil
+}
+
+func (c *Client) BootstrapCalendar(calendarID string) (*CalendarBootstrap, error) {
+	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/bootstrap", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		*CalendarBootstrap
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.CalendarBootstrap, nil
 }
 
 type CalendarEventFilter struct {
@@ -224,5 +355,4 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 	}
 
 	return respData.Events, nil
-
 }
