@@ -282,14 +282,8 @@ func (card *CalendarEventCard) Read(userKr openpgp.KeyRing, calKr openpgp.KeyRin
 	return md, nil
 }
 
-func (c *Client) ListCalendars(page, pageSize int) ([]*Calendar, error) {
-	v := url.Values{}
-	v.Set("Page", strconv.Itoa(page))
-	if pageSize > 0 {
-		v.Set("PageSize", strconv.Itoa(pageSize))
-	}
-
-	req, err := c.newRequest(http.MethodGet, calendarPath+"?"+v.Encode(), nil)
+func (c *Client) ListCalendars() ([]*Calendar, error) {
+	req, err := c.newRequest(http.MethodGet, calendarPath, nil)
 	if err != nil {
 		return nil, err
 	}
