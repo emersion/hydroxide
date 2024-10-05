@@ -3,14 +3,13 @@ package protonmail
 import (
 	"encoding/base64"
 	"errors"
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/ProtonMail/go-crypto/openpgp"
 )
 
 const calendarPath = "/calendar/v1"
@@ -18,18 +17,16 @@ const calendarPath = "/calendar/v1"
 type CalendarFlags int
 
 type Calendar struct {
-	ID          string
-	Name        string
-	Description string
-	Color       string
-	Display     int
-	Flags       CalendarFlags
+	ID         string
+	Type       int
+	CreateTime Timestamp
+	Members    []CalendarMemberView
 }
 
 type CalendarBootstrap struct {
 	Keys       []CalendarKey
 	Passphrase CalendarPassphrase
-	Members    []CalendarMember
+	Members    []CalendarMemberView
 	// ... CalendarSettings
 }
 
@@ -48,7 +45,7 @@ type CalendarPassphrase struct {
 	CalendarID        string
 }
 
-type CalendarMember struct {
+type CalendarMemberView struct {
 	ID          string
 	Permissions int
 	Email       string
@@ -138,7 +135,7 @@ type CalendarEventCard struct {
 	Author    string
 }
 
-func findMemberFromKeyring(members []CalendarMember, kr openpgp.KeyRing) (*CalendarMember, error) {
+func FindMemberViewFromKeyring(members []CalendarMemberView, kr openpgp.KeyRing) (*CalendarMemberView, error) {
 	for _, _member := range members {
 		for _, userKey := range kr.DecryptionKeys() {
 			for _, identity := range userKey.Entity.Identities {
@@ -148,7 +145,7 @@ func findMemberFromKeyring(members []CalendarMember, kr openpgp.KeyRing) (*Calen
 			}
 		}
 	}
-	return nil, errors.New("could not find a CalendarMember for keyring")
+	return nil, errors.New("could not find a CalendarMemberView for keyring")
 }
 
 func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (openpgp.KeyRing, error) {
@@ -156,7 +153,7 @@ func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (open
 	for _, key := range bootstrap.Keys {
 		var passphrase *CalendarMemberPassphrase
 
-		member, err := findMemberFromKeyring(bootstrap.Members, userKr)
+		member, err := FindMemberViewFromKeyring(bootstrap.Members, userKr)
 		if err != nil {
 			return nil, err
 		}
@@ -213,7 +210,6 @@ func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (open
 }
 
 func (card *CalendarEventCard) Read(userKr openpgp.KeyRing, calKr openpgp.KeyRing, keyPacket string) (*openpgp.MessageDetails, error) {
-	// TODO: test
 	if !card.Type.Encrypted() {
 		md := &openpgp.MessageDetails{
 			IsEncrypted:    false,
@@ -238,29 +234,6 @@ func (card *CalendarEventCard) Read(userKr openpgp.KeyRing, calKr openpgp.KeyRin
 	}
 
 	keyPacketData := base64.NewDecoder(base64.StdEncoding, strings.NewReader(keyPacket))
-	/*	packetReader := packet.NewReader(keyPacketData)
-		pkt, err := packetReader.Next()
-		if err != nil {
-			return nil, err
-		}
-
-		var key *packet.EncryptedKey
-		switch pkt.(type) {
-		case *packet.EncryptedKey:
-			for _, pKey := range userKr.DecryptionKeys() {
-				if !pKey.PrivateKey.Encrypted {
-					key = pkt.(*packet.EncryptedKey)
-					err := key.Decrypt(pKey.PrivateKey, nil)
-					if err != nil {
-						return nil, err
-					}
-					break
-				}
-			}
-		default:
-			return nil, errors.New("keyPacket packet is not of type packet.EncryptedKey")
-		}*/
-
 	ciphertext := base64.NewDecoder(base64.StdEncoding, strings.NewReader(card.Data))
 	msg := io.MultiReader(keyPacketData, ciphertext)
 	md, err := openpgp.ReadMessage(msg, calKr, nil, nil)
@@ -299,8 +272,8 @@ func (c *Client) ListCalendars() ([]*Calendar, error) {
 	return respData.Calendars, nil
 }
 
-func (c *Client) BootstrapCalendar(calendarID string) (*CalendarBootstrap, error) {
-	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/bootstrap", nil)
+func (c *Client) BootstrapCalendar(id string) (*CalendarBootstrap, error) {
+	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+id+"/bootstrap", nil)
 	if err != nil {
 		return nil, err
 	}
