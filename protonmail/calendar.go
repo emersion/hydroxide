@@ -323,3 +323,20 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 
 	return respData.Events, nil
 }
+
+func (c *Client) GetCalendarEvent(calendarID string, eventID string) (*CalendarEvent, error) {
+	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/events/"+eventID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Event *CalendarEvent
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Event, nil
+}

@@ -87,62 +87,39 @@ func toIcalEvent(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr 
 	return merged, nil
 }
 
-func toIcalCalendar(events []*protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr openpgp.KeyRing) (*ical.Calendar, error) {
-	ces := make([]*ical.Component, len(events))
-	for i, event := range events {
-		ce, err := toIcalEvent(event, userKr, calKr)
-		if err != nil {
-			return nil, err
-		}
-
-		ces[i] = ce.Component
+func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr openpgp.KeyRing) (*ical.Calendar, error) {
+	ce, err := toIcalEvent(event, userKr, calKr)
+	if err != nil {
+		return nil, err
 	}
 
-	cal := makeIcal(nil, ces...)
+	cal := makeIcal(nil, ce.Component)
 	return cal, nil
 }
 
-func getCalendarObject(b *backend, cal *protonmail.Calendar, filter *protonmail.CalendarEventFilter) (*caldav.CalendarObject, error) {
-	bootstrap, err := b.c.BootstrapCalendar(cal.ID)
+func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *protonmail.CalendarEvent) (*caldav.CalendarObject, error) {
+	data, err := toIcalCalendar(event, b.privateKeys, calKr)
 	if err != nil {
 		return nil, err
 	}
 
-	calKr, err := bootstrap.DecryptKeyring(b.privateKeys)
+	homeSetPath, err := b.CalendarHomeSetPath(nil)
 	if err != nil {
 		return nil, err
 	}
 
-	events, err := b.c.ListCalendarEvents(cal.ID, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := toIcalCalendar(events, b.privateKeys, calKr)
-	if err != nil {
-		return nil, err
-	}
-
-	lastEditTime := getLastEditTime(events)
 	co := &caldav.CalendarObject{
-		Path:    "/caldav/calendars/" + cal.ID,
-		ModTime: lastEditTime,
+		Path:    homeSetPath + calId + formatCalendarObjectPath(event.ID),
+		ModTime: time.Unix(int64(event.LastEditTime), 0),
 		// TODO: ETag
-		ETag: strconv.FormatInt(lastEditTime.Unix(), 10),
+		ETag: strconv.FormatInt(int64(event.LastEditTime), 10),
 		Data: data,
 	}
 	return co, nil
 }
 
-func getLastEditTime(events []*protonmail.CalendarEvent) time.Time {
-	var lastEditTime time.Time
-	for _, event := range events {
-		stamp := time.Unix(int64(event.LastEditTime), 0)
-		if stamp.After(lastEditTime) {
-			lastEditTime = stamp
-		}
-	}
-	return lastEditTime
+func formatCalendarObjectPath(id string) string {
+	return "/" + id + ".ics"
 }
 
 func (b *backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
@@ -216,35 +193,77 @@ func (b *backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 }
 
 func (b *backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	protonCals, err := b.c.ListCalendars()
-	if err != nil {
-		return nil, err
-	}
-
 	homeSetPath, err := b.CalendarHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	id, _ := strings.CutSuffix(path, "/")
-	id, _ = strings.CutPrefix(id, homeSetPath)
-	for _, cal := range protonCals {
-		if cal.ID != id {
-			continue
-		}
+	calEvtId, _ := strings.CutSuffix(path, "/")
+	calEvtId, _ = strings.CutSuffix(calEvtId, ".ics")
+	calEvtId, _ = strings.CutPrefix(calEvtId, homeSetPath)
+	splitIds := strings.Split(calEvtId, "/")
 
-		co, err := getCalendarObject(b, cal, nil)
+	calId, evtId := splitIds[0], splitIds[1]
+	event, err := b.c.GetCalendarEvent(calId, evtId)
+	if err != nil {
+		return nil, err
+	}
+
+	bootstrap, err := b.c.BootstrapCalendar(calId)
+	if err != nil {
+		return nil, err
+	}
+
+	calKr, err := bootstrap.DecryptKeyring(b.privateKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	co, err := getCalendarObject(b, calId, calKr, event)
+	if err != nil {
+		return nil, err
+	}
+
+	return co, nil
+}
+
+func (b *backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+	protonCals, err := b.c.ListCalendars()
+	if err != nil {
+		return nil, err
+	}
+
+	var cos []caldav.CalendarObject
+	for _, protonCal := range protonCals {
+		events, err := b.c.ListCalendarEvents(protonCal.ID, nil)
 		if err != nil {
 			return nil, err
 		}
 
-		return co, nil
-	}
-	return nil, errors.New("could not find calendar with path")
-}
+		bootstrap, err := b.c.BootstrapCalendar(protonCal.ID)
+		if err != nil {
+			return nil, err
+		}
 
-func (b *backend) ListCalendarObjects(ctx context.Context, path string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	return nil, nil
+		calKr, err := bootstrap.DecryptKeyring(b.privateKeys)
+		if err != nil {
+			return nil, err
+		}
+
+		calCos := make([]caldav.CalendarObject, len(events))
+		for i, event := range events {
+			co, err := getCalendarObject(b, protonCal.ID, calKr, event)
+			if err != nil {
+				return nil, err
+			}
+
+			calCos[i] = *co
+		}
+
+		cos = append(cos, calCos...)
+	}
+
+	return cos, nil
 }
 
 func (b *backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
@@ -261,19 +280,39 @@ func (b *backend) QueryCalendarObjects(ctx context.Context, query *caldav.Calend
 		return nil, err
 	}
 
-	cos := make([]caldav.CalendarObject, len(protonCals))
-	for i, protonCal := range protonCals {
+	var cos []caldav.CalendarObject
+	for _, protonCal := range protonCals {
 		filter := protonmail.CalendarEventFilter{}
 		filter.Start = protonmail.NewTimestamp(cf.Start)
 		filter.End = protonmail.NewTimestamp(cf.End)
 		filter.Timezone = cf.Start.Location().String()
 
-		co, err := getCalendarObject(b, protonCal, &filter)
+		events, err := b.c.ListCalendarEvents(protonCal.ID, &filter)
 		if err != nil {
 			return nil, err
 		}
 
-		cos[i] = *co
+		bootstrap, err := b.c.BootstrapCalendar(protonCal.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		calKr, err := bootstrap.DecryptKeyring(b.privateKeys)
+		if err != nil {
+			return nil, err
+		}
+
+		calCos := make([]caldav.CalendarObject, len(events))
+		for i, event := range events {
+			co, err := getCalendarObject(b, protonCal.ID, calKr, event)
+			if err != nil {
+				return nil, err
+			}
+
+			calCos[i] = *co
+		}
+
+		cos = append(cos, calCos...)
 	}
 
 	return cos, nil
