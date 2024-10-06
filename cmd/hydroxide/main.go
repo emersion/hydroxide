@@ -145,7 +145,7 @@ func listenAndServeCalDAV(addr string, authManager *auth.Manager, eventsManager 
 			if !ok {
 				ch := make(chan *protonmail.Event)
 				eventsManager.Register(c, username, ch, nil)
-				h = caldav.NewHandler(c, privateKeys, ch)
+				h = caldav.NewHandler(c, privateKeys, username, ch)
 
 				handlers[username] = h
 			}

@@ -20,6 +20,7 @@ import (
 type backend struct {
 	c           *protonmail.Client
 	privateKeys openpgp.EntityList
+	keyCache    map[string]openpgp.EntityList
 }
 
 func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
@@ -42,48 +43,63 @@ func makeIcal(props ical.Props, components ...*ical.Component) *ical.Calendar {
 	return cal
 }
 
-func toIcalEvent(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr openpgp.KeyRing) (*ical.Event, error) {
-	merged := ical.NewEvent()
-	// TODO: handle CalendarEvents, AttendeesEvents and PersonalEvents
-	for _, c := range event.SharedEvents {
-		md, err := c.Read(userKr, calKr, event.SharedKeyPacket)
-		if err != nil {
-			return nil, err
-		}
-		data, err := io.ReadAll(md.UnverifiedBody)
-		if err != nil {
-			return nil, err
-		}
+func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, userKr openpgp.KeyRing, calKr openpgp.KeyRing, keyPacket string) error {
+	md, err := eventCard.Read(userKr, calKr, keyPacket)
+	if err != nil {
+		return err
+	}
+	data, err := io.ReadAll(md.UnverifiedBody)
+	if err != nil {
+		return err
+	}
 
-		decoded, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
-		if err != nil {
-			return nil, err
-		}
+	decoded, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
+	if err != nil {
+		return err
+	}
 
-		// The signature can be checked only if md.UnverifiedBody is consumed until
-		// EOF
-		// TODO: mdc hash mismatch (?)
-		/*_, err = io.Copy(io.Discard, md.UnverifiedBody)
-		if err != nil {
-			return nil, err
-		}*/
+	// The signature can be checked only if md.UnverifiedBody is consumed until
+	// EOF
+	// TODO: mdc hash mismatch (?)
+	/*_, err = io.Copy(io.Discard, md.UnverifiedBody)
+	if err != nil {
+		return nil, err
+	}*/
 
-		if err := md.SignatureError; err != nil {
-			return nil, err
-		}
+	if err := md.SignatureError; err != nil {
+		return err
+	}
 
-		children := decoded.Events()
-		if len(children) != 1 {
-			return nil, fmt.Errorf("hydroxide/caldav: expected VCALENDAR to have exactly one VEVENT")
-		}
-		decodedEvent := &children[0]
+	children := decoded.Events()
+	if len(children) != 1 {
+		return fmt.Errorf("hydroxide/caldav: expected VCALENDAR to have exactly one VEVENT")
+	}
+	decodedEvent := &children[0]
 
-		for _, props := range decodedEvent.Props {
-			for _, p := range props {
-				merged.Props.Set(&p)
-			}
+	for _, props := range decodedEvent.Props {
+		for _, p := range props {
+			event.Props.Set(&p)
 		}
 	}
+
+	return nil
+}
+
+func toIcalEvent(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr openpgp.KeyRing) (*ical.Event, error) {
+	merged := ical.NewEvent()
+	// TODO: handle AttendeesEvents and PersonalEvents
+	for _, card := range event.CalendarEvents {
+		if err := readEventCard(merged, card, userKr, calKr, ""); err != nil {
+			return nil, err
+		}
+	}
+
+	for _, card := range event.SharedEvents {
+		if err := readEventCard(merged, card, userKr, calKr, event.SharedKeyPacket); err != nil {
+			return nil, err
+		}
+	}
+
 	return merged, nil
 }
 
@@ -98,7 +114,25 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 }
 
 func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *protonmail.CalendarEvent) (*caldav.CalendarObject, error) {
-	data, err := toIcalCalendar(event, b.privateKeys, calKr)
+	userKr, exists := b.keyCache[event.Author]
+	if !exists {
+		userKeys, err := b.c.GetPublicKeys(event.Author)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, userKey := range userKeys.Keys {
+			userKeyEntity, err := userKey.Entity()
+			if err != nil {
+				return nil, err
+			}
+
+			userKr = append(userKr, userKeyEntity)
+		}
+		b.keyCache[event.Author] = userKr
+	}
+
+	data, err := toIcalCalendar(event, userKr, calKr)
 	if err != nil {
 		return nil, err
 	}
@@ -319,25 +353,53 @@ func (b *backend) QueryCalendarObjects(ctx context.Context, query *caldav.Calend
 }
 
 func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (loc string, err error) {
+	homeSetPath, err := b.CalendarHomeSetPath(nil)
+	if err != nil {
+		return "", err
+	}
+
+	calEvtId, _ := strings.CutSuffix(path, "/")
+	calEvtId, _ = strings.CutSuffix(calEvtId, ".ics")
+	calEvtId, _ = strings.CutPrefix(calEvtId, homeSetPath)
+	splitIds := strings.Split(calEvtId, "/")
+
+	calId, evtId := splitIds[0], splitIds[1]
+	_ = calId
+	_ = evtId
+	//TODO: write functionality
 	return "", nil
 }
 
 func (b *backend) DeleteCalendarObject(ctx context.Context, path string) error {
-	return nil
+	homeSetPath, err := b.CalendarHomeSetPath(nil)
+	if err != nil {
+		return err
+	}
+
+	calEvtId, _ := strings.CutSuffix(path, "/")
+	calEvtId, _ = strings.CutSuffix(calEvtId, ".ics")
+	calEvtId, _ = strings.CutPrefix(calEvtId, homeSetPath)
+	splitIds := strings.Split(calEvtId, "/")
+
+	calId, evtId := splitIds[0], splitIds[1]
+
+	return b.c.DeleteCalendarEvent(calId, evtId)
 }
 
 func (b *backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
 	return "/caldav/", nil
 }
 
-func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-chan *protonmail.Event) http.Handler {
+func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, username string, events <-chan *protonmail.Event) http.Handler {
 	if len(privateKeys) == 0 {
 		panic("hydroxide/caldav: no private key available")
 	}
 
+	keyCache := map[string]openpgp.EntityList{username: privateKeys}
 	b := &backend{
 		c:           c,
 		privateKeys: privateKeys,
+		keyCache:    keyCache,
 	}
 
 	if events != nil {

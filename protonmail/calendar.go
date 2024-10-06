@@ -340,3 +340,34 @@ func (c *Client) GetCalendarEvent(calendarID string, eventID string) (*CalendarE
 
 	return respData.Event, nil
 }
+
+type CalendarEventDeletionReq struct {
+	Events []CalendarEventDeletionEntry
+}
+
+type CalendarEventDeletionEntry struct {
+	ID             string
+	DeletionReason int
+}
+
+func (c *Client) DeleteCalendarEvent(calendarID string, eventID string) error {
+	body := CalendarEventDeletionReq{
+		Events: []CalendarEventDeletionEntry{
+			{
+				ID:             eventID,
+				DeletionReason: 0,
+			},
+		},
+	}
+
+	req, err := c.newJSONRequest(http.MethodPut, calendarPath+"/"+calendarID+"/events/sync", body)
+	if err != nil {
+		return err
+	}
+
+	if _, err := c.do(req); err != nil {
+		return err
+	}
+
+	return nil
+}
