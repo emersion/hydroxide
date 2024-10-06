@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +22,7 @@ type backend struct {
 	c           *protonmail.Client
 	privateKeys openpgp.EntityList
 	keyCache    map[string]openpgp.EntityList
+	locker      sync.Mutex
 }
 
 func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
@@ -129,7 +131,10 @@ func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *p
 
 			userKr = append(userKr, userKeyEntity)
 		}
+
+		b.locker.Lock()
 		b.keyCache[event.Author] = userKr
+		b.locker.Unlock()
 	}
 
 	data, err := toIcalCalendar(event, userKr, calKr)
@@ -353,6 +358,7 @@ func (b *backend) QueryCalendarObjects(ctx context.Context, query *caldav.Calend
 }
 
 func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (loc string, err error) {
+	//TODO: maybe impl opts?
 	homeSetPath, err := b.CalendarHomeSetPath(nil)
 	if err != nil {
 		return "", err
@@ -364,8 +370,18 @@ func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	splitIds := strings.Split(calEvtId, "/")
 
 	calId, evtId := splitIds[0], splitIds[1]
-	_ = calId
-	_ = evtId
+
+	events := calendar.Events()
+	if len(events) != 1 {
+		return "", errors.New("hydroxide/caldav: expected PUT VCALENDAR to have exactly one VEVENT")
+	}
+	event := events[0]
+
+	err = b.c.UpdateCalendarEvent(calId, evtId, event, b.privateKeys)
+	if err != nil {
+		return "", err
+	}
+
 	//TODO: write functionality
 	return "", nil
 }

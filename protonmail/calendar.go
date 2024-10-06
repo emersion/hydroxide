@@ -5,11 +5,14 @@ import (
 	"errors"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
+	"github.com/emersion/go-ical"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const calendarPath = "/calendar/v1"
@@ -104,7 +107,8 @@ type CalendarEvent struct {
 type CalendarEventCardType int
 
 const (
-	CalendarEventCardClear CalendarEventCardType = 1 + iota
+	CalendarEventCardClear CalendarEventCardType = iota
+	CalendarEventCardEncrypted
 	CalendarEventCardSigned
 	CalendarEventCardEncryptedAndSigned
 )
@@ -341,19 +345,249 @@ func (c *Client) GetCalendarEvent(calendarID string, eventID string) (*CalendarE
 	return respData.Event, nil
 }
 
-type CalendarEventDeletionReq struct {
-	Events []CalendarEventDeletionEntry
+func concat(slices [][]string) []string {
+	var totalLen int
+	for _, s := range slices {
+		totalLen += len(s)
+	}
+	tmp := make([]string, totalLen)
+	var i int
+	for _, s := range slices {
+		i += copy(tmp[i:], s)
+	}
+	return tmp
 }
 
-type CalendarEventDeletionEntry struct {
+var sharedSignedFields = []string{
+	"uid",
+	"dtstamp",
+	"dtstart",
+	"dtend",
+	"recurrence-id",
+	"rrule",
+	"exdate",
+	"organizer",
+	"sequence",
+}
+var sharedEncryptedFields = []string{
+	"uid",
+	"dtstamp",
+	"created",
+	"description",
+	"summary",
+	"location",
+}
+
+var calendarSignedFields = []string{
+	"uid",
+	"dtstamp",
+	"exdate",
+	"status",
+	"transp",
+}
+var calendarEncryptedFields = []string{
+	"uid",
+	"dtstamp",
+	"comment",
+}
+
+var personalSignedFields = []string{
+	"uid",
+	"dtstamp",
+}
+var personalEncryptedFields = []string{}
+
+var usedFields = concat([][]string{
+	sharedSignedFields,
+	sharedEncryptedFields,
+
+	calendarSignedFields,
+	calendarEncryptedFields,
+
+	personalSignedFields,
+	personalEncryptedFields,
+})
+
+// ... attendeesSigned/EncryptedFields
+func pickProps(event *ical.Event, propNames []string) *ical.Event {
+	evt := ical.NewEvent()
+	for _, propName := range propNames {
+		props := event.Props.Values(propName)
+		if props != nil && len(props) > 0 {
+			evt.Props[props[0].Name] = props
+		}
+	}
+
+	return evt
+}
+
+func getEventParts(event *ical.Event) (map[CalendarEventCardType]*ical.Event, map[CalendarEventCardType]*ical.Event, map[CalendarEventCardType]*ical.Event) {
+	sharedPart := make(map[CalendarEventCardType]*ical.Event)
+	sharedPart[CalendarEventCardSigned] = pickProps(event, sharedSignedFields)
+	sharedPart[CalendarEventCardEncryptedAndSigned] = pickProps(event, sharedEncryptedFields)
+
+	calendarPart := make(map[CalendarEventCardType]*ical.Event)
+	calendarPart[CalendarEventCardSigned] = pickProps(event, calendarSignedFields)
+	calendarPart[CalendarEventCardEncryptedAndSigned] = pickProps(event, calendarEncryptedFields)
+
+	personalPart := make(map[CalendarEventCardType]*ical.Event)
+	personalPart[CalendarEventCardSigned] = pickProps(event, personalSignedFields)
+	personalPart[CalendarEventCardEncryptedAndSigned] = pickProps(event, personalEncryptedFields)
+
+	for _, propName := range usedFields {
+		event.Props.Del(propName)
+	}
+	for name, props := range event.Props {
+		sharedPart[CalendarEventCardEncryptedAndSigned].Props[strings.ToUpper(name)] = append(sharedPart[CalendarEventCardEncryptedAndSigned].Props[strings.ToUpper(name)], props...)
+	}
+
+	return sharedPart, calendarPart, personalPart
+}
+
+func decryptSessionKey(sessionKey string, calKr openpgp.KeyRing) (*packet.EncryptedKey, error) {
+	if sessionKey == "" {
+		return nil, nil
+	}
+
+	sharedKeyPacket := base64.NewDecoder(base64.StdEncoding, strings.NewReader(sessionKey))
+	packetReader := packet.NewReader(sharedKeyPacket)
+
+	pkt, err := packetReader.Next()
+	if err != nil {
+		return nil, err
+	}
+
+	switch pkt.(type) {
+	case *packet.EncryptedKey:
+		for _, pKey := range calKr.DecryptionKeys() {
+			if !pKey.PrivateKey.Encrypted {
+				keyPacket := pkt.(*packet.EncryptedKey)
+				err := keyPacket.Decrypt(pKey.PrivateKey, nil)
+				if err != nil {
+					return nil, err
+				}
+
+				return keyPacket, nil
+			}
+		}
+	}
+
+	return nil, errors.New("Could not decrypt session key")
+}
+
+func getOrGenerateSessionKey(oldEvent *CalendarEvent, calKr openpgp.KeyRing, config *packet.Config) (*packet.EncryptedKey, string, error) {
+	var sessionKey *packet.EncryptedKey
+	var encryptedSessionKey string
+	if oldEvent != nil {
+		encryptedSessionKey = oldEvent.SharedKeyPacket
+
+		var err error
+		sessionKey, err = decryptSessionKey(encryptedSessionKey, calKr)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	if sessionKey == nil {
+		var err error
+		sessionKey, err = generateUnencryptedKey(packet.CipherAES256, config)
+		if err != nil {
+			return nil, "", err
+		}
+
+		calEncryptionKey, ok := encryptionKey(calKr.DecryptionKeys()[0].Entity, time.Now())
+		if !ok {
+			return nil, "", errors.New("Could not find encryption key for calKr")
+		}
+		encryptedSessionKey, err = serializeEncryptedKey(sessionKey, calEncryptionKey.PublicKey, config)
+	}
+
+	return sessionKey, encryptedSessionKey, nil
+}
+
+type CreateOrUpdateCalendarEventData struct {
+	CalendarKeyPacket        string
+	CalendarEventContent     []CalendarEventCard
+	SharedKeyPacket          string
+	SharedEventContent       []CalendarEventCard
+	Color                    string
+	Permissions              int
+	IsOrganizer              bool
+	IsPersonalSingleEdit     bool
+	RemovedAttendeeAddresses []string
+	AddedProtonAttendees     []AddedProtonAttendee
+	// Notifications, AttendeesEventContent, Attendees, CancelledOccurrenceContent ...
+}
+
+type AddedProtonAttendee struct {
+	Email            string
+	AddressKeyPacket string
+}
+
+type CalendarEventSyncReq struct {
+	Events []interface{}
+}
+
+func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Event, userKr openpgp.KeyRing) error {
+	oldEvent, err := c.GetCalendarEvent(calID, eventID)
+	isCreate := false
+	if apiErr, ok := err.(*APIError); ok && apiErr.Code == 2061 {
+		isCreate = true
+	} else if err != nil {
+		return err
+	}
+
+	bootstrap, err := c.BootstrapCalendar(calID)
+	if err != nil {
+		return err
+	}
+
+	calKr, err := bootstrap.DecryptKeyring(userKr)
+	if err != nil {
+		return err
+	}
+
+	sharedPart, calendarPart, _ := getEventParts(&event)
+
+	config := &packet.Config{}
+	sharedSessionKey, encryptedSharedSessionKey, err := getOrGenerateSessionKey(oldEvent, calKr, config)
+	if err != nil {
+		return err
+	}
+
+	calendarSessionKey, encryptedCalendarSessionKey, err := getOrGenerateSessionKey(oldEvent, calKr, config)
+	if err != nil {
+		return err
+	}
+
+	body := CreateOrUpdateCalendarEventData{}
+	color := event.Props.Get("color")
+	if color != nil && color.Value != "" {
+		body.Color = color.Value
+	}
+
+	if isCreate {
+		body.SharedKeyPacket = encryptedSharedSessionKey
+	}
+
+	_ = sharedPart
+	_ = calendarPart
+	_ = sharedSessionKey
+	_ = calendarSessionKey
+	_ = encryptedCalendarSessionKey
+
+	return nil
+}
+
+type CalendarEventDeletionSyncEntry struct {
 	ID             string
 	DeletionReason int
 }
 
 func (c *Client) DeleteCalendarEvent(calendarID string, eventID string) error {
-	body := CalendarEventDeletionReq{
-		Events: []CalendarEventDeletionEntry{
-			{
+	body := CalendarEventSyncReq{
+		Events: []interface{}{
+			CalendarEventDeletionSyncEntry{
 				ID:             eventID,
 				DeletionReason: 0,
 			},
