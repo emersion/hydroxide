@@ -223,6 +223,7 @@ func (b *backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 }
 
 func (b *backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
+	//TODO read currently not working (multiget calendar-data: internal server error)
 	homeSetPath, err := b.CalendarHomeSetPath(ctx)
 	if err != nil {
 		return nil, err

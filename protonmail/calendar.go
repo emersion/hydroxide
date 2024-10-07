@@ -1,6 +1,7 @@
 package protonmail
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -359,6 +360,29 @@ func concat(slices [][]string) []string {
 	return tmp
 }
 
+type CreateOrUpdateCalendarEventData struct {
+	CalendarKeyPacket        string
+	CalendarEventContent     []CalendarEventCard
+	SharedKeyPacket          string
+	SharedEventContent       []CalendarEventCard
+	Color                    string
+	Permissions              int
+	IsOrganizer              bool
+	IsPersonalSingleEdit     bool
+	RemovedAttendeeAddresses []string
+	AddedProtonAttendees     []AddedProtonAttendee
+	// Notifications, AttendeesEventContent, Attendees, CancelledOccurrenceContent ...
+}
+
+type AddedProtonAttendee struct {
+	Email            string
+	AddressKeyPacket string
+}
+
+type CalendarEventSyncReq struct {
+	Events []interface{}
+}
+
 var sharedSignedFields = []string{
 	"uid",
 	"dtstamp",
@@ -465,9 +489,29 @@ func getEventParts(event *ical.Event) (map[CalendarEventCardType]*ical.Calendar,
 	return sharedPart, calendarPart
 }
 
-func decryptSessionKey(sessionKey string, calKr openpgp.KeyRing) (*packet.EncryptedKey, error) {
+func encodePart(part map[CalendarEventCardType]*ical.Calendar) (map[CalendarEventCardType]string, error) {
+	var encodedPart map[CalendarEventCardType]string
+	for cardType, card := range part {
+		icalData := new(bytes.Buffer)
+		icalEncoder := ical.NewEncoder(icalData)
+		err := icalEncoder.Encode(card)
+		if err != nil {
+			return nil, err
+		}
+
+		encodedPart[cardType] = icalData.String()
+	}
+
+	return encodedPart, nil
+}
+
+func decryptSessionKey(sessionKey string, calKey *openpgp.Entity) (*packet.EncryptedKey, error) {
 	if sessionKey == "" {
 		return nil, nil
+	}
+
+	if calKey.PrivateKey.Encrypted {
+		return nil, errors.New("decryption private key must be decrypted")
 	}
 
 	sharedKeyPacket := base64.NewDecoder(base64.StdEncoding, strings.NewReader(sessionKey))
@@ -480,30 +524,25 @@ func decryptSessionKey(sessionKey string, calKr openpgp.KeyRing) (*packet.Encryp
 
 	switch pkt.(type) {
 	case *packet.EncryptedKey:
-		for _, pKey := range calKr.DecryptionKeys() {
-			if !pKey.PrivateKey.Encrypted {
-				keyPacket := pkt.(*packet.EncryptedKey)
-				err := keyPacket.Decrypt(pKey.PrivateKey, nil)
-				if err != nil {
-					return nil, err
-				}
-
-				return keyPacket, nil
-			}
+		keyPacket := pkt.(*packet.EncryptedKey)
+		err := keyPacket.Decrypt(calKey.PrivateKey, nil)
+		if err != nil {
+			return nil, err
 		}
+		return keyPacket, nil
 	}
 
 	return nil, errors.New("Could not decrypt session key")
 }
 
-func getOrGenerateSessionKey(oldEvent *CalendarEvent, calKr openpgp.KeyRing, config *packet.Config) (*packet.EncryptedKey, string, error) {
+func getOrGenerateSessionKey(oldEvent *CalendarEvent, calKey *openpgp.Entity, config *packet.Config) (*packet.EncryptedKey, string, error) {
 	var sessionKey *packet.EncryptedKey
 	var encryptedSessionKey string
 	if oldEvent != nil {
 		encryptedSessionKey = oldEvent.SharedKeyPacket
 
 		var err error
-		sessionKey, err = decryptSessionKey(encryptedSessionKey, calKr)
+		sessionKey, err = decryptSessionKey(encryptedSessionKey, calKey)
 		if err != nil {
 			return nil, "", err
 		}
@@ -516,7 +555,7 @@ func getOrGenerateSessionKey(oldEvent *CalendarEvent, calKr openpgp.KeyRing, con
 			return nil, "", err
 		}
 
-		calEncryptionKey, ok := encryptionKey(calKr.DecryptionKeys()[0].Entity, time.Now())
+		calEncryptionKey, ok := encryptionKey(calKey, time.Now())
 		if !ok {
 			return nil, "", errors.New("Could not find encryption key for calKr")
 		}
@@ -526,27 +565,50 @@ func getOrGenerateSessionKey(oldEvent *CalendarEvent, calKr openpgp.KeyRing, con
 	return sessionKey, encryptedSessionKey, nil
 }
 
-type CreateOrUpdateCalendarEventData struct {
-	CalendarKeyPacket        string
-	CalendarEventContent     []CalendarEventCard
-	SharedKeyPacket          string
-	SharedEventContent       []CalendarEventCard
-	Color                    string
-	Permissions              int
-	IsOrganizer              bool
-	IsPersonalSingleEdit     bool
-	RemovedAttendeeAddresses []string
-	AddedProtonAttendees     []AddedProtonAttendee
-	// Notifications, AttendeesEventContent, Attendees, CancelledOccurrenceContent ...
+func encryptPart(part string, key *packet.EncryptedKey, signer *openpgp.Entity, config *packet.Config) (string, error) {
+	var signKey *packet.PrivateKey
+	if signer != nil {
+		signKeys, ok := signingKey(signer, config.Now())
+		if !ok {
+			return "", errors.New("no valid signing keys")
+		}
+		signKey = signKeys.PrivateKey
+		if signKey == nil {
+			return "", errors.New("no private key in signing key")
+		}
+		if signKey.Encrypted {
+			return "", errors.New("signing key must be decrypted")
+		}
+	}
+
+	encryptedBuf := new(bytes.Buffer)
+	encryptedTextWriter := base64.NewEncoder(base64.StdEncoding, encryptedBuf)
+
+	clearTextWriter, err := symetricallyEncrypt(encryptedTextWriter, key, signKey, nil, config)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = clearTextWriter.Write([]byte(part))
+	if err != nil {
+		return "", err
+	}
+
+	err = clearTextWriter.Close()
+	if err != nil {
+		return "", err
+	}
+
+	return encryptedBuf.String(), nil
 }
 
-type AddedProtonAttendee struct {
-	Email            string
-	AddressKeyPacket string
-}
+func signPart(part string, signer *openpgp.Entity, config *packet.Config) (string, error) {
+	signatureBuf := new(bytes.Buffer)
+	if err := openpgp.ArmoredDetachSignText(signatureBuf, signer, strings.NewReader(part), config); err != nil {
+		return "", err
+	}
 
-type CalendarEventSyncReq struct {
-	Events []interface{}
+	return signatureBuf.String(), nil
 }
 
 func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Event, userKr openpgp.KeyRing) error {
@@ -568,34 +630,108 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 		return err
 	}
 
-	sharedPart, calendarPart := getEventParts(&event)
+	sharedPartCal, calendarPartCal := getEventParts(&event)
+	sharedPart, err := encodePart(sharedPartCal)
+	if err != nil {
+		return err
+	}
+	calendarPart, err := encodePart(calendarPartCal)
+	if err != nil {
+		return err
+	}
 
 	config := &packet.Config{}
-	sharedSessionKey, encryptedSharedSessionKey, err := getOrGenerateSessionKey(oldEvent, calKr, config)
+	calKey := calKr.DecryptionKeys()[0].Entity
+
+	sharedSessionKey, encryptedSharedSessionKey, err := getOrGenerateSessionKey(oldEvent, calKey, config)
 	if err != nil {
 		return err
 	}
 
-	calendarSessionKey, encryptedCalendarSessionKey, err := getOrGenerateSessionKey(oldEvent, calKr, config)
+	calendarSessionKey, encryptedCalendarSessionKey, err := getOrGenerateSessionKey(oldEvent, calKey, config)
 	if err != nil {
 		return err
 	}
 
-	body := CreateOrUpdateCalendarEventData{}
+	data := CreateOrUpdateCalendarEventData{}
 	color := event.Props.Get("color")
 	if color != nil && color.Value != "" {
-		body.Color = color.Value
+		data.Color = color.Value
 	}
 
 	if isCreate {
-		body.SharedKeyPacket = encryptedSharedSessionKey
+		data.SharedKeyPacket = encryptedSharedSessionKey
 	}
 
-	_ = sharedPart
-	_ = calendarPart
-	_ = sharedSessionKey
-	_ = calendarSessionKey
-	_ = encryptedCalendarSessionKey
+	if signedSharedPart, ok := sharedPart[CalendarEventCardSigned]; ok && signedSharedPart != "" {
+		signature, err := signPart(signedSharedPart, calKey, config)
+		if err != nil {
+			return err
+		}
+
+		data.SharedEventContent = append(data.SharedEventContent, CalendarEventCard{
+			Type:      CalendarEventCardSigned,
+			Data:      signedSharedPart,
+			Signature: signature,
+		})
+	}
+	if encryptedSharedPart, ok := sharedPart[CalendarEventCardEncryptedAndSigned]; ok && encryptedSharedPart != "" {
+		signature, err := signPart(encryptedSharedPart, calKey, config)
+		if err != nil {
+			return err
+		}
+
+		encryptedData, err := encryptPart(encryptedSharedPart, sharedSessionKey, calKey, config)
+		if err != nil {
+			return err
+		}
+
+		data.SharedEventContent = append(data.SharedEventContent, CalendarEventCard{
+			Type:      CalendarEventCardSigned,
+			Data:      encryptedData,
+			Signature: signature,
+		})
+	}
+
+	// Cancelled occurrence parts ...
+
+	if signedCalendarPart, ok := calendarPart[CalendarEventCardSigned]; ok && signedCalendarPart != "" {
+		signature, err := signPart(signedCalendarPart, calKey, config)
+		if err != nil {
+			return err
+		}
+
+		data.CalendarEventContent = append(data.CalendarEventContent, CalendarEventCard{
+			Type:      CalendarEventCardSigned,
+			Data:      signedCalendarPart,
+			Signature: signature,
+		})
+	}
+	if encryptedCalendarPart, ok := calendarPart[CalendarEventCardEncryptedAndSigned]; ok && encryptedCalendarPart != "" {
+		if isCreate {
+			data.CalendarKeyPacket = encryptedCalendarSessionKey
+		}
+
+		signature, err := signPart(encryptedCalendarPart, calKey, config)
+		if err != nil {
+			return err
+		}
+
+		encryptedData, err := encryptPart(encryptedCalendarPart, calendarSessionKey, calKey, config)
+		if err != nil {
+			return err
+		}
+
+		data.CalendarEventContent = append(data.CalendarEventContent, CalendarEventCard{
+			Type:      CalendarEventCardSigned,
+			Data:      encryptedData,
+			Signature: signature,
+		})
+	}
+
+	// Attendees encrypted and clear parts ...
+	// Removed attendees emails ...
+	// Attendees encrypted session keys ...
 
 	return nil
 }
