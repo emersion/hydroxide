@@ -29,35 +29,19 @@ func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
 	// TODO
 }
 
-func makeIcal(props ical.Props, components ...*ical.Component) *ical.Calendar {
-	cal := ical.NewCalendar()
-
-	if props != nil {
-		maps.Copy(cal.Props, props)
-	}
-	cal.Props.SetText("VERSION", "2.0")
-	cal.Props.SetText("PRODID", "-//hydroxide//ProtonMail calendar//EN")
-
-	if components != nil {
-		cal.Children = append(cal.Children, components...)
-	}
-
-	return cal
-}
-
-func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, userKr openpgp.KeyRing, calKr openpgp.KeyRing, keyPacket string) error {
+func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, userKr openpgp.KeyRing, calKr openpgp.KeyRing, keyPacket string) (ical.Props, error) {
 	md, err := eventCard.Read(userKr, calKr, keyPacket)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	data, err := io.ReadAll(md.UnverifiedBody)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	decoded, err := ical.NewDecoder(bytes.NewReader(data)).Decode()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// The signature can be checked only if md.UnverifiedBody is consumed until
@@ -69,12 +53,12 @@ func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, us
 	}*/
 
 	if err := md.SignatureError; err != nil {
-		return err
+		return nil, err
 	}
 
 	children := decoded.Events()
 	if len(children) != 1 {
-		return fmt.Errorf("hydroxide/caldav: expected VCALENDAR to have exactly one VEVENT")
+		return nil, fmt.Errorf("hydroxide/caldav: expected VCALENDAR to have exactly one VEVENT")
 	}
 	decodedEvent := &children[0]
 
@@ -84,34 +68,41 @@ func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, us
 		}
 	}
 
-	return nil
+	return decoded.Props, nil
 }
 
-func toIcalEvent(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr openpgp.KeyRing) (*ical.Event, error) {
+func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr openpgp.KeyRing) (*ical.Calendar, error) {
 	merged := ical.NewEvent()
+	calProps := ical.Props{}
 	// TODO: handle AttendeesEvents and PersonalEvents
 	for _, card := range event.CalendarEvents {
-		if err := readEventCard(merged, card, userKr, calKr, ""); err != nil {
+		if propsMap, err := readEventCard(merged, card, userKr, calKr, ""); err != nil {
 			return nil, err
+		} else {
+			for name, props := range propsMap {
+				calProps[name] = append(calProps[name], props...)
+			}
 		}
 	}
 
 	for _, card := range event.SharedEvents {
-		if err := readEventCard(merged, card, userKr, calKr, event.SharedKeyPacket); err != nil {
+		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.SharedKeyPacket); err != nil {
 			return nil, err
+		} else {
+			for name, props := range propsMap {
+				name = strings.ToUpper(name)
+				calProps[name] = append(calProps[name], props...)
+			}
 		}
 	}
 
-	return merged, nil
-}
+	cal := ical.NewCalendar()
 
-func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, calKr openpgp.KeyRing) (*ical.Calendar, error) {
-	ce, err := toIcalEvent(event, userKr, calKr)
-	if err != nil {
-		return nil, err
+	if calProps != nil {
+		maps.Copy(cal.Props, calProps)
 	}
+	cal.Children = append(cal.Children, merged.Component)
 
-	cal := makeIcal(nil, ce.Component)
 	return cal, nil
 }
 

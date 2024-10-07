@@ -8,6 +8,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/emersion/go-ical"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -391,11 +392,11 @@ var calendarEncryptedFields = []string{
 	"comment",
 }
 
-var personalSignedFields = []string{
+/*var personalSignedFields = []string{
 	"uid",
 	"dtstamp",
 }
-var personalEncryptedFields = []string{}
+var personalEncryptedFields = []string{}*/
 
 var usedFields = concat([][]string{
 	sharedSignedFields,
@@ -403,13 +404,13 @@ var usedFields = concat([][]string{
 
 	calendarSignedFields,
 	calendarEncryptedFields,
-
-	personalSignedFields,
-	personalEncryptedFields,
+	/*
+		personalSignedFields,
+		personalEncryptedFields,*/
 })
 
 // ... attendeesSigned/EncryptedFields
-func pickProps(event *ical.Event, propNames []string) *ical.Event {
+func pickProps(event *ical.Event, propNames []string) *ical.Component {
 	evt := ical.NewEvent()
 	for _, propName := range propNames {
 		props := event.Props.Values(propName)
@@ -418,30 +419,50 @@ func pickProps(event *ical.Event, propNames []string) *ical.Event {
 		}
 	}
 
-	return evt
+	return evt.Component
 }
 
-func getEventParts(event *ical.Event) (map[CalendarEventCardType]*ical.Event, map[CalendarEventCardType]*ical.Event, map[CalendarEventCardType]*ical.Event) {
-	sharedPart := make(map[CalendarEventCardType]*ical.Event)
-	sharedPart[CalendarEventCardSigned] = pickProps(event, sharedSignedFields)
-	sharedPart[CalendarEventCardEncryptedAndSigned] = pickProps(event, sharedEncryptedFields)
+func makeIcal(props ical.Props, components ...*ical.Component) *ical.Calendar {
+	cal := ical.NewCalendar()
 
-	calendarPart := make(map[CalendarEventCardType]*ical.Event)
-	calendarPart[CalendarEventCardSigned] = pickProps(event, calendarSignedFields)
-	calendarPart[CalendarEventCardEncryptedAndSigned] = pickProps(event, calendarEncryptedFields)
+	if props != nil {
+		maps.Copy(cal.Props, props)
+	}
 
-	personalPart := make(map[CalendarEventCardType]*ical.Event)
+	cal.Props.SetText(ical.PropVersion, "2.0")
+	cal.Props.SetText(ical.PropProductID, "-//Proton AG//web-calendar 5.0.33.2//EN") // TODO: change?
+
+	if components != nil {
+		cal.Children = append(cal.Children, components...)
+	}
+
+	return cal
+}
+
+func getEventParts(event *ical.Event) (map[CalendarEventCardType]*ical.Calendar, map[CalendarEventCardType]*ical.Calendar) {
+	sharedPart := make(map[CalendarEventCardType]*ical.Calendar)
+	sharedPart[CalendarEventCardSigned] = makeIcal(nil, pickProps(event, sharedSignedFields))
+	sharedPart[CalendarEventCardEncryptedAndSigned] = makeIcal(nil, pickProps(event, sharedEncryptedFields))
+
+	calendarPart := make(map[CalendarEventCardType]*ical.Calendar)
+	calendarPart[CalendarEventCardSigned] = makeIcal(nil, pickProps(event, calendarSignedFields))
+	calendarPart[CalendarEventCardEncryptedAndSigned] = makeIcal(nil, pickProps(event, calendarEncryptedFields))
+
+	// No personal part support for now
+	/*personalPart := make(map[CalendarEventCardType]*ical.Calendar)
 	personalPart[CalendarEventCardSigned] = pickProps(event, personalSignedFields)
 	personalPart[CalendarEventCardEncryptedAndSigned] = pickProps(event, personalEncryptedFields)
+	*/
 
 	for _, propName := range usedFields {
 		event.Props.Del(propName)
 	}
 	for name, props := range event.Props {
-		sharedPart[CalendarEventCardEncryptedAndSigned].Props[strings.ToUpper(name)] = append(sharedPart[CalendarEventCardEncryptedAndSigned].Props[strings.ToUpper(name)], props...)
+		// TODO: test if actually assigns byref or is copy
+		sharedPart[CalendarEventCardEncryptedAndSigned].Events()[0].Component.Props[strings.ToUpper(name)] = append(sharedPart[CalendarEventCardEncryptedAndSigned].Props[strings.ToUpper(name)], props...)
 	}
 
-	return sharedPart, calendarPart, personalPart
+	return sharedPart, calendarPart
 }
 
 func decryptSessionKey(sessionKey string, calKr openpgp.KeyRing) (*packet.EncryptedKey, error) {
@@ -547,7 +568,7 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 		return err
 	}
 
-	sharedPart, calendarPart, _ := getEventParts(&event)
+	sharedPart, calendarPart := getEventParts(&event)
 
 	config := &packet.Config{}
 	sharedSessionKey, encryptedSharedSessionKey, err := getOrGenerateSessionKey(oldEvent, calKr, config)
