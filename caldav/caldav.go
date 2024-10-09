@@ -30,10 +30,32 @@ func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
 }
 
 func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, userKr openpgp.KeyRing, calKr openpgp.KeyRing, keyPacket string) (ical.Props, error) {
+	/*	dec, err := base64.StdEncoding.DecodeString(eventCard.Data)
+		deckp, err := base64.StdEncoding.DecodeString(keyPacket)
+		buf := new(bytes.Buffer)
+		arm, err := armor.Encode(buf, "PGP MESSAGE", nil)
+		if err != nil {
+			return nil, err
+		}
+		_, err = arm.Write(deckp)
+		if err != nil {
+			return nil, err
+		}
+		_, err = arm.Write(dec)
+		if err != nil {
+			return nil, err
+		}
+		err = arm.Close()
+		if err != nil {
+			return nil, err
+		}
+		_ = dec*/
+
 	md, err := eventCard.Read(userKr, calKr, keyPacket)
 	if err != nil {
 		return nil, err
 	}
+
 	data, err := io.ReadAll(md.UnverifiedBody)
 	if err != nil {
 		return nil, err
@@ -75,12 +97,22 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 	merged := ical.NewEvent()
 	calProps := ical.Props{}
 	// TODO: handle AttendeesEvents and PersonalEvents
-	for _, card := range event.CalendarEvents {
-		if propsMap, err := readEventCard(merged, card, userKr, calKr, ""); err != nil {
+	for _, card := range event.SharedEvents {
+		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.SharedKeyPacket); err != nil {
 			return nil, err
 		} else {
-			for name, props := range propsMap {
-				calProps[name] = append(calProps[name], props...)
+			for name, _ := range propsMap {
+				calProps.Set(propsMap.Get(name))
+			}
+		}
+	}
+
+	for _, card := range event.CalendarEvents {
+		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.CalendarKeyPacket); err != nil {
+			//return nil, err
+		} else {
+			for name, _ := range propsMap {
+				calProps.Set(propsMap.Get(name))
 			}
 		}
 	}
@@ -89,9 +121,8 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.SharedKeyPacket); err != nil {
 			return nil, err
 		} else {
-			for name, props := range propsMap {
-				name = strings.ToUpper(name)
-				calProps[name] = append(calProps[name], props...)
+			for name, _ := range propsMap {
+				calProps.Set(propsMap.Get(name))
 			}
 		}
 	}
@@ -369,13 +400,13 @@ func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *
 	}
 	event := events[0]
 
-	err = b.c.UpdateCalendarEvent(calId, evtId, event, b.privateKeys)
+	newEvent, err := b.c.UpdateCalendarEvent(calId, evtId, event, b.privateKeys)
 	if err != nil {
 		return "", err
 	}
 
-	//TODO: write functionality
-	return "", nil
+	path = formatCalendarObjectPath(newEvent.ID)
+	return path, nil
 }
 
 func (b *backend) DeleteCalendarObject(ctx context.Context, path string) error {
