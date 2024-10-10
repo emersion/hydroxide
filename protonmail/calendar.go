@@ -3,14 +3,12 @@ package protonmail
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/emersion/go-ical"
 	"io"
-	"log"
 	"maps"
 	"net/http"
 	"net/url"
@@ -427,6 +425,11 @@ var calendarEncryptedFields = []string{
 	"comment",
 }
 
+var requiredSet = map[string]struct{}{
+	"uid":     {},
+	"dtstamp": {},
+}
+
 /*var personalSignedFields = []string{
 	"uid",
 	"dtstamp",
@@ -502,6 +505,10 @@ func getEventParts(event *ical.Event) (map[CalendarEventCardType]*ical.Calendar,
 func encodePart(part map[CalendarEventCardType]*ical.Calendar) (map[CalendarEventCardType]string, error) {
 	encodedPart := make(map[CalendarEventCardType]string)
 	for cardType, card := range part {
+		if card == nil {
+			encodedPart[cardType] = ""
+			continue
+		}
 		icalData := new(bytes.Buffer)
 		icalEncoder := ical.NewEncoder(icalData)
 		err := icalEncoder.Encode(card)
@@ -513,6 +520,32 @@ func encodePart(part map[CalendarEventCardType]*ical.Calendar) (map[CalendarEven
 	}
 
 	return encodedPart, nil
+}
+func encodePartOptimized(part map[CalendarEventCardType]*ical.Calendar) (map[CalendarEventCardType]string, error) {
+	for cardType, card := range part {
+		evt := card.Children[0]
+		if len(evt.Children) > 0 {
+			continue
+		}
+
+		if len(evt.Props) > len(requiredSet) {
+			continue
+		}
+
+		isExactMatch := true
+		for propName := range evt.Props {
+			if _, exists := requiredSet[strings.ToLower(propName)]; !exists {
+				isExactMatch = false
+				break
+			}
+		}
+
+		if isExactMatch && len(evt.Props) == len(requiredSet) {
+			part[cardType] = nil
+		}
+	}
+
+	return encodePart(part)
 }
 
 func decryptSessionKey(sessionKey string, calKr openpgp.KeyRing) (*packet.EncryptedKey, error) {
@@ -624,6 +657,11 @@ func encryptPart(part string, key *packet.EncryptedKey, signer *openpgp.Entity, 
 		return "", err
 	}
 
+	err = encryptedTextWriter.Close()
+	if err != nil {
+		return "", err
+	}
+
 	return encryptedBuf.String(), nil
 }
 
@@ -654,7 +692,7 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 	if err != nil {
 		return nil, "", err
 	}
-	calendarPart, err := encodePart(calendarPartCal)
+	calendarPart, err := encodePartOptimized(calendarPartCal)
 	if err != nil {
 		return nil, "", err
 	}
@@ -674,7 +712,6 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 		data.IsOrganizer = 1
 	}
 
-	// TODO CHECK WHICH KEYS TO USE FOR SIGNING
 	userKeys := getUserKeys(userKr)
 	if signedSharedPart, ok := sharedPart[CalendarEventCardSigned]; ok && signedSharedPart != "" {
 		signature, err := signPart(signedSharedPart, userKeys, config)
@@ -727,13 +764,12 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 
 		_, err = io.ReadAll(md.UnverifiedBody)
 		if err != nil {
-			return nil, "", err // TODO: openpgp: "parsing error"
+			return nil, "", err
 		}
 
 		data.SharedEventContent = append(data.SharedEventContent, card)
 	}
 
-	// TODO check if actually needed
 	if signedCalendarPart, ok := calendarPart[CalendarEventCardSigned]; ok && signedCalendarPart != "" {
 		signature, err := signPart(signedCalendarPart, userKeys, config)
 		if err != nil {
@@ -845,53 +881,23 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 	var respData struct {
 		resp
 		Responses []struct {
-			Event CalendarEvent
+			Index    int
+			Response struct {
+				resp
+				Event CalendarEvent
+			}
 		}
 	}
 
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(body); err != nil {
+	if err := c.doJSON(req, &respData); err != nil {
 		return nil, err
-	}
-	str := buf.String()
-	_ = str
-
-	req.Header.Set("Accept", "application/json")
-
-	respd, err := c.do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer respd.Body.Close()
-
-	respbytes, _ := io.ReadAll(respd.Body)
-	resps := string(respbytes)
-	_ = resps
-	if err := json.NewDecoder(bytes.NewReader(respbytes)).Decode(&respData); err != nil {
-		return nil, err
-	}
-
-	if c.Debug {
-		log.Printf("<< %v %v", req.Method, req.URL.Path)
-		log.Printf("%#v", respData)
 	}
 
 	if len(respData.Responses) != 1 {
 		return nil, errors.New("no response on events sync")
 	}
 
-	return &respData.Responses[0].Event, nil
-
-	/*if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
-	}
-
-	return nil, nil
-		if len(respData.Responses) != 1 {
-			return nil, errors.New("no response on events sync")
-		}
-
-		return &respData.Responses[0].Event, nil*/
+	return &respData.Responses[0].Response.Event, nil
 }
 
 type CalendarEventDeleteSyncEntry struct {

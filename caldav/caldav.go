@@ -12,7 +12,6 @@ import (
 	"io"
 	"maps"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -172,9 +171,8 @@ func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *p
 	co := &caldav.CalendarObject{
 		Path:    homeSetPath + calId + formatCalendarObjectPath(event.ID),
 		ModTime: time.Unix(int64(event.LastEditTime), 0),
-		// TODO: ETag
-		ETag: strconv.FormatInt(int64(event.LastEditTime), 10),
-		Data: data,
+		ETag:    fmt.Sprintf("%X%s", event.LastEditTime, event.ID),
+		Data:    data,
 	}
 	return co, nil
 }
@@ -254,7 +252,6 @@ func (b *backend) GetCalendar(ctx context.Context, path string) (*caldav.Calenda
 }
 
 func (b *backend) GetCalendarObject(ctx context.Context, path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	//TODO read currently not working (multiget calendar-data: internal server error)
 	homeSetPath, err := b.CalendarHomeSetPath(ctx)
 	if err != nil {
 		return nil, err
@@ -329,6 +326,7 @@ func (b *backend) ListCalendarObjects(ctx context.Context, path string, req *cal
 }
 
 func (b *backend) QueryCalendarObjects(ctx context.Context, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+	//TODO caldav backend lib inefficient for not passing query comprequest, maybe make pr on it
 	if query.CompFilter.Name != ical.CompCalendar {
 		return nil, fmt.Errorf("hydroxide/caldav: expected toplevel comp to be VCALENDAR")
 	}
@@ -405,7 +403,7 @@ func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		return "", err
 	}
 
-	path = formatCalendarObjectPath(newEvent.ID)
+	path = homeSetPath + calId + formatCalendarObjectPath(newEvent.ID)
 	return path, nil
 }
 
