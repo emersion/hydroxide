@@ -13,7 +13,7 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20231106173351-e73c9f7bad43
 	github.com/emersion/go-smtp v0.21.1
 	github.com/emersion/go-vcard v0.0.0-20230815062825-8fda7d206ec9
-	github.com/emersion/go-webdav v0.5.0
+	github.com/emersion/go-webdav v0.5.1-0.20240202132822-e3ba95cd7760
 	golang.org/x/crypto v0.27.0
 	golang.org/x/term v0.24.0
 )
