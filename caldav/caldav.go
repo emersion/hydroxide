@@ -118,7 +118,7 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 	return cal, nil
 }
 
-func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *protonmail.CalendarEvent) (*caldav.CalendarObject, error) {
+func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *protonmail.CalendarEvent, settings protonmail.CalendarSettings) (*caldav.CalendarObject, error) {
 	userKr, exists := b.keyCache[event.Author]
 	if !exists {
 		userKeys, err := b.c.GetPublicKeys(event.Author)
@@ -138,6 +138,14 @@ func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *p
 		b.locker.Lock()
 		b.keyCache[event.Author] = userKr
 		b.locker.Unlock()
+	}
+
+	if event.Notifications == nil {
+		if event.FullDay == 0 {
+			event.Notifications = settings.DefaultPartDayNotifications
+		} else {
+			event.Notifications = settings.DefaultFullDayNotifications
+		}
 	}
 
 	data, err := toIcalCalendar(event, userKr, calKr)
@@ -263,7 +271,7 @@ func (b *backend) GetCalendarObject(ctx context.Context, path string, req *calda
 		return nil, err
 	}
 
-	co, err := getCalendarObject(b, calId, calKr, event)
+	co, err := getCalendarObject(b, calId, calKr, event, bootstrap.CalendarSettings)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +305,7 @@ func (b *backend) ListCalendarObjects(ctx context.Context, path string, req *cal
 
 	cos := make([]caldav.CalendarObject, len(events))
 	for i, event := range events {
-		co, err := getCalendarObject(b, calId, calKr, event)
+		co, err := getCalendarObject(b, calId, calKr, event, bootstrap.CalendarSettings)
 		if err != nil {
 			return nil, err
 		}
@@ -348,7 +356,7 @@ func (b *backend) QueryCalendarObjects(ctx context.Context, path string, query *
 
 	cos := make([]caldav.CalendarObject, len(events))
 	for i, event := range events {
-		co, err := getCalendarObject(b, calId, calKr, event)
+		co, err := getCalendarObject(b, calId, calKr, event, bootstrap.CalendarSettings)
 		if err != nil {
 			return nil, err
 		}
@@ -361,6 +369,7 @@ func (b *backend) QueryCalendarObjects(ctx context.Context, path string, query *
 
 func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (loc string, err error) {
 	//TODO: maybe impl opts?
+	//TODO: attendees maybe
 	homeSetPath, err := b.CalendarHomeSetPath(nil)
 	if err != nil {
 		return "", err

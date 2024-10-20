@@ -28,10 +28,18 @@ type Calendar struct {
 }
 
 type CalendarBootstrap struct {
-	Keys       []CalendarKey
-	Passphrase CalendarPassphrase
-	Members    []CalendarMemberView
-	// ... CalendarSettings
+	Keys             []CalendarKey
+	Passphrase       CalendarPassphrase
+	Members          []CalendarMemberView
+	CalendarSettings CalendarSettings
+}
+
+type CalendarSettings struct {
+	ID                          string
+	CalendarID                  string
+	DefaultEventDuration        int
+	DefaultPartDayNotifications []CalendarNotification
+	DefaultFullDayNotifications []CalendarNotification
 }
 
 type CalendarKey struct {
