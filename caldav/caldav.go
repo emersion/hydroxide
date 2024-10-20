@@ -87,7 +87,7 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 
 	for _, card := range event.CalendarEvents {
 		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.CalendarKeyPacket); err != nil {
-			//return nil, err
+			return nil, err
 		} else {
 			for name, _ := range propsMap {
 				calProps.Set(propsMap.Get(name))
@@ -95,14 +95,17 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 		}
 	}
 
-	for _, card := range event.SharedEvents {
-		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.SharedKeyPacket); err != nil {
-			return nil, err
-		} else {
-			for name, _ := range propsMap {
-				calProps.Set(propsMap.Get(name))
-			}
-		}
+	for _, notification := range event.Notifications {
+		alarm := ical.NewComponent(ical.CompAlarm)
+
+		trigger := ical.NewProp("TRIGGER")
+		trigger.SetValueType(ical.ValueDuration)
+		trigger.Value = notification.Trigger
+
+		alarm.Props.SetText("ACTION", notification.Type.ToIcalAction())
+		alarm.Props.Add(trigger)
+
+		merged.Children = append(merged.Children, alarm)
 	}
 
 	cal := ical.NewCalendar()

@@ -103,6 +103,7 @@ type CalendarEvent struct {
 	PersonalEvents             []CalendarEventCard
 	AttendeesEvents            []CalendarEventCard
 	Attendees                  []interface{}
+	Notifications              []CalendarNotification
 }
 
 type CalendarEventCardType int
@@ -138,6 +139,40 @@ type CalendarEventCard struct {
 	Signature string
 	MemberID  string `json:",omitempty"`
 	Author    string `json:",omitempty"`
+}
+
+type CalendarNotificationType int
+
+const (
+	CalendarNotificationEmail CalendarNotificationType = iota
+	CalendarNotificationDevice
+)
+
+func (t CalendarNotificationType) ToIcalAction() string {
+	switch t {
+	case CalendarNotificationEmail:
+		return "EMAIL"
+	case CalendarNotificationDevice:
+		return "DISPLAY"
+	default:
+		return ""
+	}
+}
+
+func ValarmActionToCalendarNotificationType(action string) CalendarNotificationType {
+	switch action {
+	case "EMAIL":
+		return CalendarNotificationEmail
+	case "DISPLAY":
+		fallthrough
+	default:
+		return CalendarNotificationDevice
+	}
+}
+
+type CalendarNotification struct {
+	Type    CalendarNotificationType
+	Trigger string
 }
 
 func FindMemberViewFromKeyring(members []CalendarMemberView, kr openpgp.KeyRing) (*CalendarMemberView, error) {
@@ -368,13 +403,14 @@ func concat(slices [][]string) []string {
 
 type CalendarEventCreateOrUpdateData struct {
 	Color                *string
+	Notifications        []CalendarNotification
 	CalendarKeyPacket    string              `json:",omitempty"`
 	CalendarEventContent []CalendarEventCard `json:",omitempty"`
 	SharedKeyPacket      string              `json:",omitempty"`
 	SharedEventContent   []CalendarEventCard `json:",omitempty"`
 	Permissions          int                 `json:",omitempty"`
 	IsOrganizer          int                 `json:",omitempty"`
-	// Notifications, AttendeesEventContent, AddedProtonAttendees, Attendees, CancelledOccurrenceContent, IsPersonalSingleEdit, RemovedAttendeeAddresses ...
+	// AttendeesEventContent, AddedProtonAttendees, Attendees, CancelledOccurrenceContent, IsPersonalSingleEdit, RemovedAttendeeAddresses ...
 }
 
 type CalendarEventSyncReq struct {
@@ -700,11 +736,34 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 	config := &packet.Config{}
 
 	data := CalendarEventCreateOrUpdateData{}
+
+	data.Permissions = 1
+
 	color := event.Props.Get("color")
 	if color != nil && color.Value != "" {
 		data.Color = &color.Value
 	}
-	data.Permissions = 1
+
+	notifications := make([]CalendarNotification, 0)
+	for _, child := range event.Children {
+		if child.Name != ical.CompAlarm {
+			continue
+		}
+
+		notification := CalendarNotification{}
+
+		action := child.Props.Get("ACTION")
+		notification.Type = ValarmActionToCalendarNotificationType(action.Value)
+
+		trigger := child.Props.Get("TRIGGER")
+		notification.Trigger = trigger.Value
+
+		notifications = append(notifications, notification)
+	}
+
+	if len(notifications) > 0 {
+		data.Notifications = notifications
+	}
 
 	if oldEvent != nil {
 		data.IsOrganizer = oldEvent.IsOrganizer
@@ -757,16 +816,6 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 			Signature: signature,
 		}
 
-		md, err := card.Read(userKr, calKr, encryptedSharedSessionKey)
-		if err != nil {
-			return nil, "", err
-		}
-
-		_, err = io.ReadAll(md.UnverifiedBody)
-		if err != nil {
-			return nil, "", err
-		}
-
 		data.SharedEventContent = append(data.SharedEventContent, card)
 	}
 
@@ -812,16 +861,6 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 			Type:      CalendarEventCardEncryptedAndSigned,
 			Data:      encryptedData,
 			Signature: signature,
-		}
-
-		md, err := card.Read(userKr, calKr, encryptedCalendarSessionKey)
-		if err != nil {
-			return nil, "", err
-		}
-
-		_, err = io.ReadAll(md.UnverifiedBody)
-		if err != nil {
-			return nil, "", err
 		}
 
 		data.CalendarEventContent = append(data.CalendarEventContent, card)
