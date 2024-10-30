@@ -19,6 +19,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/emersion/hydroxide/auth"
+	"github.com/emersion/hydroxide/caldav"
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/config"
 	"github.com/emersion/hydroxide/events"
@@ -163,6 +164,55 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 	return s.ListenAndServe()
 }
 
+func listenAndServeCalDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config) error {
+	handlers := make(map[string]http.Handler)
+
+	s := &http.Server{
+		Addr:      addr,
+		TLSConfig: tlsConfig,
+		Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("WWW-Authenticate", "Basic")
+
+			username, password, ok := req.BasicAuth()
+			if !ok {
+				resp.WriteHeader(http.StatusUnauthorized)
+				io.WriteString(resp, "Credentials are required")
+				return
+			}
+
+			c, privateKeys, err := authManager.Auth(username, password)
+			if err != nil {
+				if err == auth.ErrUnauthorized {
+					resp.WriteHeader(http.StatusUnauthorized)
+				} else {
+					resp.WriteHeader(http.StatusInternalServerError)
+				}
+				io.WriteString(resp, err.Error())
+				return
+			}
+
+			h, ok := handlers[username]
+			if !ok {
+				ch := make(chan *protonmail.Event)
+				eventsManager.Register(c, username, ch, nil)
+				h = caldav.NewHandler(c, privateKeys, ch)
+
+				handlers[username] = h
+			}
+
+			h.ServeHTTP(resp, req)
+		}),
+	}
+
+	if s.TLSConfig != nil {
+		log.Println("CalDAV server listening with TLS on", s.Addr)
+		return s.ListenAndServeTLS("", "")
+	}
+
+	log.Println("CalDAV server listening on", s.Addr)
+	return s.ListenAndServe()
+}
+
 func isMbox(br *bufio.Reader) (bool, error) {
 	prefix := []byte("From ")
 	b, err := br.Peek(len(prefix))
@@ -175,6 +225,7 @@ func isMbox(br *bufio.Reader) (bool, error) {
 const usage = `usage: hydroxide [options...] <command>
 Commands:
 	auth <username>		Login to ProtonMail via hydroxide
+	caldav			Run hydroxide as a CalDAV server
 	carddav			Run hydroxide as a CardDAV server
 	export-secret-keys <username> Export secret keys
 	imap			Run hydroxide as an IMAP server
@@ -196,18 +247,24 @@ Global options:
 		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
 	-imap-host example.com
 		Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
+	-caldav-host example.com
+		Allowed CalDAV email hostname on which hydroxide listens, defaults to 127.0.0.1
 	-carddav-host example.com
-		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+		Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1
 	-smtp-port example.com
 		SMTP port on which hydroxide listens, defaults to 1025
 	-imap-port example.com
 		IMAP port on which hydroxide listens, defaults to 1143
+	-caldav-port example.com
+		CalDAV port on which hydroxide listens, defaults to 8081
 	-carddav-port example.com
 		CardDAV port on which hydroxide listens, defaults to 8080
 	-disable-imap
 		Disable IMAP for hydroxide serve
 	-disable-smtp
 		Disable SMTP for hydroxide serve
+	-disable-caldav
+		Disable CalDAV for hydroxide serve
 	-disable-carddav
 		Disable CardDAV for hydroxide serve
 	-tls-cert /path/to/cert.pem
@@ -233,6 +290,10 @@ func main() {
 	imapHost := flag.String("imap-host", "127.0.0.1", "Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	imapPort := flag.String("imap-port", "1143", "IMAP port on which hydroxide listens, defaults to 1143")
 	disableIMAP := flag.Bool("disable-imap", false, "Disable IMAP for hydroxide serve")
+
+	caldavHost := flag.String("caldav-host", "127.0.0.1", "Allowed CalDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
+	caldavPort := flag.String("caldav-port", "8081", "CalDAV port on which hydroxide listens, defaults to 8081")
+	disableCalDAV := flag.Bool("disable-caldav", false, "Disable CalDAV for hydroxide serve")
 
 	carddavHost := flag.String("carddav-host", "127.0.0.1", "Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	carddavPort := flag.String("carddav-port", "8080", "CardDAV port on which hydroxide listens, defaults to 8080")
@@ -497,6 +558,11 @@ func main() {
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager, tlsConfig))
+	case "caldav":
+		addr := *caldavHost + ":" + *caldavPort
+		authManager := auth.NewManager(newClient)
+		eventsManager := events.NewManager()
+		log.Fatal(listenAndServeCalDAV(addr, authManager, eventsManager, tlsConfig))
 	case "carddav":
 		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
@@ -505,12 +571,13 @@ func main() {
 	case "serve":
 		smtpAddr := *smtpHost + ":" + *smtpPort
 		imapAddr := *imapHost + ":" + *imapPort
+		caldavAddr := *caldavHost + ":" + *caldavPort
 		carddavAddr := *carddavHost + ":" + *carddavPort
 
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 
-		done := make(chan error, 3)
+		done := make(chan error, 4)
 		if !*disableSMTP {
 			go func() {
 				done <- listenAndServeSMTP(smtpAddr, debug, authManager, tlsConfig)
@@ -519,6 +586,11 @@ func main() {
 		if !*disableIMAP {
 			go func() {
 				done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig)
+			}()
+		}
+		if !*disableCalDAV {
+			go func() {
+				done <- listenAndServeCalDAV(caldavAddr, authManager, eventsManager, tlsConfig)
 			}()
 		}
 		if !*disableCardDAV {
