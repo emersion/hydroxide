@@ -931,7 +931,7 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 			Index    int
 			Response struct {
 				resp
-				Event CalendarEvent
+				Event *CalendarEvent
 			}
 		}
 	}
@@ -940,11 +940,11 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 		return nil, err
 	}
 
-	if len(respData.Responses) != 1 {
+	if len(respData.Responses) != 1 || respData.Responses[0].Response.Event == nil {
 		return nil, errors.New("no response on events sync")
 	}
 
-	return &respData.Responses[0].Response.Event, nil
+	return respData.Responses[0].Response.Event, nil
 }
 
 type CalendarEventDeleteSyncEntry struct {
