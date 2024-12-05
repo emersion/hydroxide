@@ -176,13 +176,12 @@ func (u *user) initMailboxes() error {
 			if _, ok := u.mailboxes[label.ID]; ok {
 				continue
 			}
-
-      var displayName string
-      if len(label.Path) > 0 {
-        displayName = strings.ReplaceAll(label.Path, "/", ".")
-      } else {
-        displayName = label.Name
-      }
+			var displayName string
+			if len(label.Path) > 0 {
+				displayName = strings.ReplaceAll(label.Path, "/", ".")
+			} else {
+				displayName = label.Name
+			}
 			u.mailboxes[label.ID], err = newMailbox(displayName, label.ID, nil, u)
 			if err != nil {
 				return err
