@@ -27,6 +27,7 @@ const (
 type Label struct {
 	ID        string
 	Name      string
+  Path      string
 	Color     string
 	Display   int
 	Type      LabelType

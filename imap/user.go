@@ -177,7 +177,13 @@ func (u *user) initMailboxes() error {
 				continue
 			}
 
-			u.mailboxes[label.ID], err = newMailbox(label.Name, label.ID, nil, u)
+      var displayName string
+      if len(label.Path) > 0 {
+        displayName = strings.ReplaceAll(label.Path, "/", ".")
+      } else {
+        displayName = label.Name
+      }
+			u.mailboxes[label.ID], err = newMailbox(displayName, label.ID, nil, u)
 			if err != nil {
 				return err
 			}
