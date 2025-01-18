@@ -3,7 +3,7 @@ package protonmail
 import (
 	"bytes"
 	"encoding/base64"
-	"errors"
+	"fmt"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
@@ -193,7 +193,7 @@ func FindMemberViewFromKeyring(members []CalendarMemberView, kr openpgp.KeyRing)
 			}
 		}
 	}
-	return nil, errors.New("could not find a CalendarMemberView for keyring")
+	return nil, fmt.Errorf("FindMemberViewFromKeyring: could not find a CalendarMemberView for the provided keyring")
 }
 
 func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (openpgp.KeyRing, error) {
@@ -203,7 +203,7 @@ func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (open
 
 		member, err := FindMemberViewFromKeyring(bootstrap.Members, userKr)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("DecryptKeyring: failed to find member view: (%w)", err)
 		}
 
 		for _, _passphrase := range bootstrap.Passphrase.MemberPassphrases {
@@ -213,22 +213,22 @@ func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (open
 			}
 		}
 		if passphrase == nil {
-			return nil, errors.New("could not find a MemberPassphrase for MemberID")
+			return nil, fmt.Errorf("DecryptKeyring: could not find MemberPassphrase for MemberID: %s", member.ID)
 		}
 
 		passphraseEnc, err := armor.Decode(strings.NewReader(passphrase.Passphrase))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("DecryptKeyring: failed to decode passphrase: (%w)", err)
 		}
 
 		md, err := openpgp.ReadMessage(passphraseEnc.Body, userKr, nil, nil)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("DecryptKeyring: failed to read message: (%w)", err)
 		}
 
 		passphraseBytes, err := io.ReadAll(md.UnverifiedBody)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("DecryptKeyring: failed to read passphrase body: (%w)", err)
 		}
 
 		/*		signatureData, err := armor.Decode(strings.NewReader(passphrase.Signature))
@@ -242,19 +242,19 @@ func (bootstrap *CalendarBootstrap) DecryptKeyring(userKr openpgp.KeyRing) (open
 
 		keyKr, err := openpgp.ReadArmoredKeyRing(strings.NewReader(key.PrivateKey))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("DecryptKeyring: failed to read armored key ring: (%w)", err)
 		}
 
 		for _, calKey := range keyKr {
 			err = calKey.PrivateKey.Decrypt(passphraseBytes)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("DecryptKeyring: failed to decrypt private key: (%w)", err)
 			}
 
 			for _, subKey := range calKey.Subkeys {
 				err := subKey.PrivateKey.Decrypt(passphraseBytes)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("DecryptKeyring: failed to decrypt subkey: (%w)", err)
 				}
 			}
 		}
@@ -293,7 +293,7 @@ func (card *CalendarEventCard) Read(userKr openpgp.KeyRing, calKr openpgp.KeyRin
 	msg := io.MultiReader(keyPacketData, ciphertext)
 	md, err := openpgp.ReadMessage(msg, calKr, nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Read: failed to read message: (%w)", err)
 	}
 
 	if card.Type.Signed() {
@@ -313,7 +313,7 @@ func (card *CalendarEventCard) Read(userKr openpgp.KeyRing, calKr openpgp.KeyRin
 func (c *Client) ListCalendars() ([]*Calendar, error) {
 	req, err := c.newRequest(http.MethodGet, calendarPath, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ListCalendars: failed to create new request: (%w)", err)
 	}
 
 	var respData struct {
@@ -321,7 +321,7 @@ func (c *Client) ListCalendars() ([]*Calendar, error) {
 		Calendars []*Calendar
 	}
 	if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ListCalendars: failed to execute JSON request: (%w)", err)
 	}
 
 	return respData.Calendars, nil
@@ -330,7 +330,7 @@ func (c *Client) ListCalendars() ([]*Calendar, error) {
 func (c *Client) BootstrapCalendar(id string) (*CalendarBootstrap, error) {
 	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+id+"/bootstrap", nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("BootstrapCalendar: failed to create new request: (%w)", err)
 	}
 
 	var respData struct {
@@ -338,7 +338,7 @@ func (c *Client) BootstrapCalendar(id string) (*CalendarBootstrap, error) {
 		*CalendarBootstrap
 	}
 	if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("BootstrapCalendar: failed to execute JSON request: (%w)", err)
 	}
 
 	return respData.CalendarBootstrap, nil
@@ -365,7 +365,7 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 
 	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/events?"+v.Encode(), nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ListCalendarEvents: failed to create new request for calendarID %s: (%w)", calendarID, err)
 	}
 
 	var respData struct {
@@ -373,7 +373,7 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 		Events []*CalendarEvent
 	}
 	if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ListCalendarEvents: failed to execute JSON request for calendarID %s: (%w)", calendarID, err)
 	}
 
 	return respData.Events, nil
@@ -382,7 +382,7 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 func (c *Client) GetCalendarEvent(calendarID string, eventID string) (*CalendarEvent, error) {
 	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/events/"+eventID, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetCalendarEvent: failed to create new request for calendarID %s and eventID %s: (%w)", calendarID, eventID, err)
 	}
 
 	var respData struct {
@@ -390,7 +390,7 @@ func (c *Client) GetCalendarEvent(calendarID string, eventID string) (*CalendarE
 		Event *CalendarEvent
 	}
 	if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetCalendarEvent: failed to execute JSON request for calendarID %s and eventID %s: (%w)", calendarID, eventID, err)
 	}
 
 	return respData.Event, nil
@@ -557,7 +557,7 @@ func encodePart(part map[CalendarEventCardType]*ical.Calendar) (map[CalendarEven
 		icalEncoder := ical.NewEncoder(icalData)
 		err := icalEncoder.Encode(card)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("encodePart: failed to encode card to ical: (%w)", err)
 		}
 
 		encodedPart[cardType] = icalData.String()
@@ -602,25 +602,24 @@ func decryptSessionKey(sessionKey string, calKr openpgp.KeyRing) (*packet.Encryp
 
 	pkt, err := packetReader.Next()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decryptSessionKey: failed to read next packet: (%w)", err)
 	}
 
-	switch pkt.(type) {
+	switch pkt := pkt.(type) {
 	case *packet.EncryptedKey:
-		keyPacket := pkt.(*packet.EncryptedKey)
-		decryptionKey := calKr.KeysById(keyPacket.KeyId)[0]
+		decryptionKey := calKr.KeysById(pkt.KeyId)[0]
 		if decryptionKey.PrivateKey.Encrypted {
-			return nil, errors.New("decryption private key must be decrypted")
+			return nil, fmt.Errorf("decryptSessionKey: decryption private key must be decrypted for KeyId %d", pkt.KeyId)
 		}
 
-		err := keyPacket.Decrypt(decryptionKey.PrivateKey, nil)
+		err := pkt.Decrypt(decryptionKey.PrivateKey, nil)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decryptSessionKey: failed to decrypt encrypted key for KeyId %d: (%w)", pkt.KeyId, err)
 		}
-		return keyPacket, nil
+		return pkt, nil
+	default:
+		return nil, fmt.Errorf("decryptSessionKey: unexpected packet type, unable to decrypt session key")
 	}
-
-	return nil, errors.New("could not decrypt session key")
 }
 
 func getOrGenerateSessionKey(keyPacket string, calKr openpgp.KeyRing, config *packet.Config) (*packet.EncryptedKey, string, error) {
@@ -632,7 +631,7 @@ func getOrGenerateSessionKey(keyPacket string, calKr openpgp.KeyRing, config *pa
 		var err error
 		sessionKey, err = decryptSessionKey(encryptedSessionKey, calKr)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("getOrGenerateSessionKey: failed to decrypt session key: (%w)", err)
 		}
 	}
 
@@ -640,15 +639,18 @@ func getOrGenerateSessionKey(keyPacket string, calKr openpgp.KeyRing, config *pa
 		var err error
 		sessionKey, err = generateUnencryptedKey(packet.CipherAES256, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("getOrGenerateSessionKey: failed to generate unencrypted key: (%w)", err)
 		}
 
 		calKeys := getCalKeys(calKr)
 		calEncryptionKey, ok := encryptionKey(calKeys, config.Now())
 		if !ok {
-			return nil, "", errors.New("could not find encryption key for calKeys")
+			return nil, "", fmt.Errorf("getOrGenerateSessionKey: could not find encryption key for calendar keys")
 		}
 		encryptedSessionKey, err = serializeEncryptedKey(sessionKey, calEncryptionKey.PublicKey, config)
+		if err != nil {
+			return nil, "", fmt.Errorf("getOrGenerateSessionKey: failed to serialize encrypted key: (%w)", err)
+		}
 	}
 
 	return sessionKey, encryptedSessionKey, nil
@@ -667,14 +669,14 @@ func encryptPart(part string, key *packet.EncryptedKey, signer *openpgp.Entity, 
 	if signer != nil {
 		signKeys, ok := signingKey(signer, config.Now())
 		if !ok {
-			return "", errors.New("no valid signing keys")
+			return "", fmt.Errorf("encryptPart: no valid signing keys available")
 		}
 		signKey = signKeys.PrivateKey
 		if signKey == nil {
-			return "", errors.New("no private key in signing key")
+			return "", fmt.Errorf("encryptPart: no private key found in signing key")
 		}
 		if signKey.Encrypted {
-			return "", errors.New("signing key must be decrypted")
+			return "", fmt.Errorf("encryptPart: signing key must be decrypted")
 		}
 	}
 
@@ -688,22 +690,22 @@ func encryptPart(part string, key *packet.EncryptedKey, signer *openpgp.Entity, 
 
 	clearTextWriter, err := symetricallyEncrypt(encryptedTextWriter, key, signKey, &hints, config)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encryptPart: failed to encrypt text: (%w)", err)
 	}
 
 	_, err = clearTextWriter.Write([]byte(part))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encryptPart: failed to write part data: (%w)", err)
 	}
 
 	err = clearTextWriter.Close()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encryptPart: failed to close clear text writer: (%w)", err)
 	}
 
 	err = encryptedTextWriter.Close()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encryptPart: failed to close encrypted text writer: (%w)", err)
 	}
 
 	return encryptedBuf.String(), nil
@@ -712,7 +714,7 @@ func encryptPart(part string, key *packet.EncryptedKey, signer *openpgp.Entity, 
 func signPart(part string, signer *openpgp.Entity, config *packet.Config) (string, error) {
 	signatureBuf := new(bytes.Buffer)
 	if err := openpgp.ArmoredDetachSignText(signatureBuf, signer, strings.NewReader(part), config); err != nil {
-		return "", err
+		return "", fmt.Errorf("signPart: failed to sign part: (%w)", err)
 	}
 
 	return signatureBuf.String(), nil
@@ -723,28 +725,26 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 
 	bootstrap, err := c.BootstrapCalendar(calID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("makeUpdateData: failed to bootstrap calendar with ID %s: (%w)", calID, err)
 	}
 
 	calKr, err := bootstrap.DecryptKeyring(userKr)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("makeUpdateData: failed to decrypt keyring: (%w)", err)
 	}
 
 	sharedPartCal, calendarPartCal := getEventParts(&event)
 	sharedPart, err := encodePart(sharedPartCal)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("makeUpdateData: failed to encode shared part: (%w)", err)
 	}
 	calendarPart, err := encodePartOptimized(calendarPartCal)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("makeUpdateData: failed to encode calendar part: (%w)", err)
 	}
 
 	config := &packet.Config{}
-
 	data := CalendarEventCreateOrUpdateData{}
-
 	data.Permissions = 1
 
 	color := event.Props.Get("color")
@@ -783,7 +783,7 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 	if signedSharedPart, ok := sharedPart[CalendarEventCardSigned]; ok && signedSharedPart != "" {
 		signature, err := signPart(signedSharedPart, userKeys, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to sign shared part: (%w)", err)
 		}
 
 		card := CalendarEventCard{
@@ -801,7 +801,7 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 		}
 		sharedSessionKey, encryptedSharedSessionKey, err := getOrGenerateSessionKey(sharedKeyPacket, calKr, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to get or generate session key for shared part: (%w)", err)
 		}
 
 		if isCreate || sharedKeyPacket == "" {
@@ -810,12 +810,12 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 
 		signature, err := signPart(encryptedSharedPart, userKeys, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to sign encrypted shared part: (%w)", err)
 		}
 
 		encryptedData, err := encryptPart(encryptedSharedPart, sharedSessionKey, nil, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to encrypt shared part: (%w)", err)
 		}
 
 		card := CalendarEventCard{
@@ -830,7 +830,7 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 	if signedCalendarPart, ok := calendarPart[CalendarEventCardSigned]; ok && signedCalendarPart != "" {
 		signature, err := signPart(signedCalendarPart, userKeys, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to sign calendar part: (%w)", err)
 		}
 
 		card := CalendarEventCard{
@@ -848,7 +848,7 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 		}
 		calendarSessionKey, encryptedCalendarSessionKey, err := getOrGenerateSessionKey(calendarKeyPacket, calKr, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to get or generate session key for calendar part: (%w)", err)
 		}
 
 		if isCreate || calendarKeyPacket == "" {
@@ -857,12 +857,12 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 
 		signature, err := signPart(encryptedCalendarPart, userKeys, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to sign encrypted calendar part: (%w)", err)
 		}
 
 		encryptedData, err := encryptPart(encryptedCalendarPart, calendarSessionKey, nil, config)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("makeUpdateData: failed to encrypt calendar part: (%w)", err)
 		}
 
 		card := CalendarEventCard{
@@ -881,7 +881,7 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 
 	member, err := FindMemberViewFromKeyring(bootstrap.Members, userKr)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("makeUpdateData: failed to find member view from keyring: (%w)", err)
 	}
 
 	return &data, member.ID, nil
@@ -893,12 +893,12 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 	if apiErr, ok := err.(*APIError); ok && apiErr.Code == 2061 {
 		isCreate = true
 	} else if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("UpdateCalendarEvent: could not get old calendar event: (%w)", err)
 	}
 
 	data, memberID, err := makeUpdateData(c, calID, oldEvent, event, userKr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("UpdateCalendarEvent: could not make update data: (%w)", err)
 	}
 
 	var entry interface{}
@@ -922,7 +922,7 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 
 	req, err := c.newJSONRequest(http.MethodPut, calendarPath+"/"+calID+"/events/sync", body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("UpdateCalendarEvent: could not create JSON request: (%w)", err)
 	}
 
 	var respData struct {
@@ -937,11 +937,11 @@ func (c *Client) UpdateCalendarEvent(calID string, eventID string, event ical.Ev
 	}
 
 	if err := c.doJSON(req, &respData); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("UpdateCalendarEvent: could not send JSON request: (%w)", err)
 	}
 
 	if len(respData.Responses) != 1 || respData.Responses[0].Response.Event == nil {
-		return nil, errors.New("no response on events sync")
+		return nil, fmt.Errorf("UpdateCalendarEvent: no event on events sync response")
 	}
 
 	return respData.Responses[0].Response.Event, nil
@@ -964,11 +964,11 @@ func (c *Client) DeleteCalendarEvent(calID string, eventID string) error {
 
 	req, err := c.newJSONRequest(http.MethodPut, calendarPath+"/"+calID+"/events/sync", body)
 	if err != nil {
-		return err
+		return fmt.Errorf("DeleteCalendarEvent: could not create JSON request: (%w)", err)
 	}
 
 	if _, err := c.do(req); err != nil {
-		return err
+		return fmt.Errorf("DeleteCalendarEvent: could not send JSON request: (%w)", err)
 	}
 
 	return nil
