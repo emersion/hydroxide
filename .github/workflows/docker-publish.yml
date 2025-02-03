@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
   push:
     branches: [ "master" ]
-    # Publish semver tags as releases.
+    # Publish server tags as releases.
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "master" ]
