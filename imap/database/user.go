@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/boltdb/bolt"
+	bolt "go.etcd.io/bbolt"
 
 	"github.com/emersion/hydroxide/config"
 	"github.com/emersion/hydroxide/protonmail"
