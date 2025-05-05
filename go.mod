@@ -4,7 +4,6 @@ go 1.23.8
 
 require (
 	github.com/ProtonMail/go-crypto v1.2.0
-	github.com/boltdb/bolt v1.3.1
 	github.com/emersion/go-bcrypt v0.0.0-20170822072041-6e724a1baa63
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-mbox v1.0.3
@@ -13,6 +12,7 @@ require (
 	github.com/emersion/go-smtp v0.21.3
 	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
 	github.com/emersion/go-webdav v0.5.0
+	go.etcd.io/bbolt v1.4.0
 	golang.org/x/crypto v0.37.0
 	golang.org/x/term v0.31.0
 )
