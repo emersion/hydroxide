@@ -59,10 +59,21 @@ go build ./cmd/hydroxide
 
 # Run all services together
 ./hydroxide serve
+
+# Run with TLS support
+./hydroxide -tls-auto-generate serve              # Auto-generate certificates
+./hydroxide -tls-cert cert.pem -tls-key key.pem serve   # Use custom certificates
+./hydroxide -tls-cert cert.pem -tls-key key.pem -imap-tls-mode implicit imap
 ```
 
 ### Environment Variables
 - `HYDROXIDE_BRIDGE_PASS`: Skip bridge password prompt
+
+### TLS Certificate Management
+- Auto-generated certificates: `--tls-auto-generate` flag creates self-signed certs in config directory
+- Custom certificates: Use `--tls-cert` and `--tls-key` for production deployments
+- Certificate storage: `~/.config/hydroxide/` (Linux/macOS) or `%APPDATA%\hydroxide\` (Windows)
+- Certificate properties: RSA 2048-bit, 1-year validity, localhost + 127.0.0.1 SAN
 
 ### Common Operations
 ```bash
@@ -93,6 +104,9 @@ go build ./cmd/hydroxide
   - ProtonMail Bridge-compatible folder structure (Folders/ and Labels/)
   - Proper IMAP RFC 3501 compliance for mbsync/isync compatibility
   - Custom JSON unmarshaling for flexible API response handling
+  - Complete TLS support: STARTTLS and implicit TLS (IMAPS) modes
+  - Automatic self-signed certificate generation for easy setup
+  - Client certificate authentication with CA verification
 
 ## Dependencies
 

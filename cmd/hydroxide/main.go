@@ -95,7 +95,7 @@ func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsC
 	return s.ListenAndServe()
 }
 
-func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config) error {
+func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config, tlsMode string) error {
 	be := imapbackend.New(authManager, eventsManager)
 	s := imapserver.New(be)
 	s.Addr = addr
@@ -106,12 +106,17 @@ func listenAndServeIMAP(addr string, debug bool, authManager *auth.Manager, even
 	}
 
 	if s.TLSConfig != nil {
-		log.Println("IMAP server listening with TLS on", s.Addr)
-		return s.ListenAndServeTLS()
+		if tlsMode == "implicit" {
+			log.Println("IMAP server listening with implicit TLS (IMAPS) on", s.Addr)
+			return s.ListenAndServeTLS()
+		} else {
+			log.Println("IMAP server listening with STARTTLS support on", s.Addr)
+			return s.ListenAndServe()
+		}
+	} else {
+		log.Println("IMAP server listening without TLS on", s.Addr)
+		return s.ListenAndServe()
 	}
-
-	log.Println("IMAP server listening on", s.Addr)
-	return s.ListenAndServe()
 }
 
 func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager *events.Manager, tlsConfig *tls.Config) error {
@@ -216,6 +221,10 @@ Global options:
 		Path to the certificate key to use for incoming connections (Optional)
 	-tls-client-ca /path/to/ca.pem
 		If set, clients must provide a certificate signed by the given CA (Optional)
+	-tls-auto-generate
+		Auto-generate self-signed certificates if none provided (saves to config directory)
+	-imap-tls-mode <mode>
+		IMAP TLS mode: 'starttls' for STARTTLS upgrade (default), 'implicit' for immediate TLS (IMAPS)
 
 Environment variables:
 	HYDROXIDE_BRIDGE_PASS	Don't prompt for the bridge password, use this variable instead
@@ -241,6 +250,8 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "Path to the certificate to use for incoming connections")
 	tlsCertKey := flag.String("tls-key", "", "Path to the certificate key to use for incoming connections")
 	tlsClientCA := flag.String("tls-client-ca", "", "If set, clients must provide a certificate signed by the given CA")
+	tlsAutoGenerate := flag.Bool("tls-auto-generate", false, "Auto-generate self-signed certificates if none provided")
+	imapTLSMode := flag.String("imap-tls-mode", "starttls", "IMAP TLS mode: 'starttls' for STARTTLS upgrade, 'implicit' for immediate TLS")
 
 	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
 	exportSecretKeysCmd := flag.NewFlagSet("export-secret-keys", flag.ExitOnError)
@@ -254,7 +265,7 @@ func main() {
 
 	flag.Parse()
 
-	tlsConfig, err := config.TLS(*tlsCert, *tlsCertKey, *tlsClientCA)
+	tlsConfig, err := config.TLSWithAutoGenerate(*tlsCert, *tlsCertKey, *tlsClientCA, *tlsAutoGenerate)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -496,7 +507,7 @@ func main() {
 		addr := *imapHost + ":" + *imapPort
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
-		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager, tlsConfig))
+		log.Fatal(listenAndServeIMAP(addr, debug, authManager, eventsManager, tlsConfig, *imapTLSMode))
 	case "carddav":
 		addr := *carddavHost + ":" + *carddavPort
 		authManager := auth.NewManager(newClient)
@@ -518,7 +529,7 @@ func main() {
 		}
 		if !*disableIMAP {
 			go func() {
-				done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig)
+				done <- listenAndServeIMAP(imapAddr, debug, authManager, eventsManager, tlsConfig, *imapTLSMode)
 			}()
 		}
 		if !*disableCardDAV {

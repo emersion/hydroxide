@@ -91,19 +91,47 @@ Tested on GNOME (Evolution) and Android (DAVDroid).
 
 ### IMAP
 
-IMAP support includes full nested folder hierarchy and is compatible with standard email clients like mbsync/isync.
+IMAP support includes full nested folder hierarchy and comprehensive TLS support, compatible with standard email clients like mbsync/isync.
 
 Features:
 - Full nested folder support with unlimited depth
 - ProtonMail Bridge-compatible folder structure (Folders/ and Labels/)
 - IMAP RFC 3501 compliance for proper email client integration
 - Support for both ProtonMail folders and labels
+- Complete TLS support with automatic certificate generation
 
-For now, it only supports unencrypted local connections.
+Connection options:
 
 ```shell
+# Unencrypted IMAP
 hydroxide imap
+
+# IMAP with STARTTLS using auto-generated certificates (easiest)
+hydroxide -tls-auto-generate imap
+
+# IMAP with STARTTLS using your own certificates
+hydroxide -tls-cert cert.pem -tls-key key.pem imap
+
+# IMAP with implicit TLS (IMAPS)
+hydroxide -tls-cert cert.pem -tls-key key.pem -imap-tls-mode implicit imap
 ```
+
+TLS Options:
+- **Auto-generated certificates**: Use `-tls-auto-generate` for automatic self-signed certificates
+- **Custom certificates**: Provide your own with `-tls-cert` and `-tls-key`
+- **STARTTLS mode** (default): Server starts unencrypted and upgrades to TLS when requested
+- **Implicit TLS mode**: Server requires TLS from connection start (IMAPS)
+- **Client certificate authentication**: Optional CA verification with `-tls-client-ca`
+
+Certificate Storage:
+- Auto-generated certificates are saved to `~/.config/hydroxide/` (Linux/macOS) or `%APPDATA%\hydroxide\` (Windows)
+- Certificates are valid for 1 year and include localhost + 127.0.0.1
+
+Security Notes:
+- Auto-generated certificates are self-signed and suitable for local use
+- For production deployments, use custom certificates from a trusted CA
+- STARTTLS mode is recommended for compatibility with most email clients
+- Implicit TLS mode (IMAPS) provides immediate encryption but may require port 993
 
 Tested with mbsync/isync for Maildir synchronization.
 
