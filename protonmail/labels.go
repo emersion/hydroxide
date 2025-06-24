@@ -1,7 +1,9 @@
 package protonmail
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -24,8 +26,39 @@ const (
 	LabelContact LabelType = 2
 )
 
+// LabelPath is a custom type that can unmarshal both string and []string
+type LabelPath []string
+
+func (lp *LabelPath) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as []string first
+	var slice []string
+	if err := json.Unmarshal(data, &slice); err == nil {
+		*lp = LabelPath(slice)
+		return nil
+	}
+	
+	// If that fails, try to unmarshal as string
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	
+	// Convert string to slice, handling different possible formats
+	if str == "" {
+		*lp = LabelPath([]string{})
+	} else {
+		// Split by common delimiters that might be used in paths
+		parts := strings.Split(str, "/")
+		*lp = LabelPath(parts)
+	}
+	
+	return nil
+}
+
 type Label struct {
 	ID        string
+	ParentID  string    `json:"ParentID,omitempty"`
+	Path      LabelPath `json:"Path,omitempty"`
 	Name      string
 	Color     string
 	Display   int

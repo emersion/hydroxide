@@ -148,6 +148,29 @@ func labelNameToFlag(s string) string {
 	return sb.String()
 }
 
+func (u *user) buildFolderPath(label *protonmail.Label, allLabels []*protonmail.Label) string {
+	// If the label has a Path field and it's not empty, use it
+	if len(label.Path) > 0 {
+		return strings.Join([]string(label.Path), delimiter)
+	}
+	
+	// Otherwise, build path from ParentID hierarchy
+	if label.ParentID == "" {
+		return label.Name
+	}
+	
+	// Find parent label
+	for _, parent := range allLabels {
+		if parent.ID == label.ParentID {
+			parentPath := u.buildFolderPath(parent, allLabels)
+			return parentPath + delimiter + label.Name
+		}
+	}
+	
+	// Fallback if parent not found
+	return label.Name
+}
+
 func (u *user) initMailboxes() error {
 	u.Lock()
 	defer u.Unlock()
@@ -155,7 +178,7 @@ func (u *user) initMailboxes() error {
 	u.mailboxes = make(map[string]*mailbox)
 	for _, data := range systemMailboxes {
 		var err error
-		u.mailboxes[data.label], err = newMailbox(data.name, data.label, data.attrs, u)
+		u.mailboxes[data.label], err = newMailbox(data.name, data.label, data.attrs, "", false, u)
 		if err != nil {
 			return err
 		}
@@ -171,22 +194,80 @@ func (u *user) initMailboxes() error {
 		return err
 	}
 
+
+	// Build hierarchy maps
+	children := make(map[string][]string)
+	for _, label := range labels {
+		if label.ParentID != "" {
+			children[label.ParentID] = append(children[label.ParentID], label.ID)
+		}
+	}
+
+	// Update system mailboxes to check if they have children
+	for labelID, mbox := range u.mailboxes {
+		if len(children[labelID]) > 0 {
+			mbox.hasChildren = true
+		}
+	}
+
+	// Create top-level "Folders" and "Labels" containers
+	foldersID := "folders-container"
+	labelsID := "labels-container"
+	
+	// Check if we have any actual folders or labels to determine if containers have children
+	hasFolders := false
+	hasLabels := false
+	for _, label := range labels {
+		if label.Exclusive == 1 {
+			hasFolders = true
+		} else {
+			hasLabels = true
+		}
+	}
+	
+	if hasFolders {
+		u.mailboxes[foldersID], err = newMailbox("Folders", foldersID, []string{imap.NoSelectAttr}, "", true, u)
+		if err != nil {
+			return err
+		}
+	}
+	
+	if hasLabels {
+		u.mailboxes[labelsID], err = newMailbox("Labels", labelsID, []string{imap.NoSelectAttr}, "", true, u)
+		if err != nil {
+			return err
+		}
+	}
+
 	for _, label := range labels {
 		if label.Exclusive == 1 {
 			if _, ok := u.mailboxes[label.ID]; ok {
 				continue
 			}
 
-			u.mailboxes[label.ID], err = newMailbox(label.Name, label.ID, nil, u)
+			// Build folder path from hierarchy under "Folders/"
+			folderPath := u.buildFolderPath(label, labels)
+			folderName := "Folders/" + folderPath
+			hasChildren := len(children[label.ID]) > 0
+
+			u.mailboxes[label.ID], err = newMailbox(folderName, label.ID, nil, label.ParentID, hasChildren, u)
 			if err != nil {
 				return err
 			}
 		} else {
+			// Handle labels as both flags AND virtual folders under "Labels/"
 			if _, ok := u.flags[label.ID]; ok {
 				continue
 			}
 
 			u.flags[label.ID] = labelNameToFlag(label.Name)
+			
+			// Also create a virtual folder for the label under "Labels/"
+			labelName := "Labels/" + label.Name
+			u.mailboxes[label.ID], err = newMailbox(labelName, label.ID, nil, "", false, u)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

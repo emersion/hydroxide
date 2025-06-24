@@ -17,9 +17,11 @@ import (
 const delimiter = "/"
 
 type mailbox struct {
-	name  string
-	label string
-	attrs []string
+	name     string
+	label    string
+	attrs    []string
+	parentID string
+	hasChildren bool
 
 	u  *user
 	db *database.Mailbox
@@ -31,19 +33,21 @@ type mailbox struct {
 	deleted       map[string]struct{}
 }
 
-func newMailbox(name string, label string, attrs []string, u *user) (*mailbox, error) {
+func newMailbox(name string, label string, attrs []string, parentID string, hasChildren bool, u *user) (*mailbox, error) {
 	mboxDB, err := u.db.Mailbox(label)
 	if err != nil {
 		return nil, err
 	}
 
 	return &mailbox{
-		name:    name,
-		label:   label,
-		attrs:   attrs,
-		u:       u,
-		db:      mboxDB,
-		deleted: make(map[string]struct{}),
+		name:        name,
+		label:       label,
+		attrs:       attrs,
+		parentID:    parentID,
+		hasChildren: hasChildren,
+		u:           u,
+		db:          mboxDB,
+		deleted:     make(map[string]struct{}),
 	}, nil
 }
 
@@ -52,8 +56,17 @@ func (mbox *mailbox) Name() string {
 }
 
 func (mbox *mailbox) Info() (*imap.MailboxInfo, error) {
+	attrs := make([]string, len(mbox.attrs))
+	copy(attrs, mbox.attrs)
+	
+	if mbox.hasChildren {
+		attrs = append(attrs, imap.HasChildrenAttr)
+	} else {
+		attrs = append(attrs, imap.HasNoChildrenAttr)
+	}
+	
 	return &imap.MailboxInfo{
-		Attributes: append([]string{imap.NoInferiorsAttr}, mbox.attrs...),
+		Attributes: attrs,
 		Delimiter:  delimiter,
 		Name:       mbox.name,
 	}, nil

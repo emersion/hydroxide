@@ -91,13 +91,21 @@ Tested on GNOME (Evolution) and Android (DAVDroid).
 
 ### IMAP
 
-⚠️  **Warning**: IMAP support is work-in-progress. Here be dragons.
+IMAP support includes full nested folder hierarchy and is compatible with standard email clients like mbsync/isync.
+
+Features:
+- Full nested folder support with unlimited depth
+- ProtonMail Bridge-compatible folder structure (Folders/ and Labels/)
+- IMAP RFC 3501 compliance for proper email client integration
+- Support for both ProtonMail folders and labels
 
 For now, it only supports unencrypted local connections.
 
 ```shell
 hydroxide imap
 ```
+
+Tested with mbsync/isync for Maildir synchronization.
 
 ## License
 
