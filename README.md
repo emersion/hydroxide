@@ -99,7 +99,7 @@ Tested on GNOME (Evolution), Thunderbird, KOrganizer.
 
 ### IMAP
 
-⚠️  **Warning**: IMAP support is work-in-progress. Here be dragons.
+  **Warning**: IMAP support is work-in-progress. Here be dragons.
 
 For now, it only supports unencrypted local connections.
 
