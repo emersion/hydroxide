@@ -110,7 +110,7 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 
 	cal := ical.NewCalendar()
 
-	if calProps != nil {
+	if len(calProps) > 0 {
 		maps.Copy(cal.Props, calProps)
 	}
 	cal.Children = append(cal.Children, merged.Component)
@@ -153,7 +153,7 @@ func getCalendarObject(b *backend, calId string, calKr openpgp.KeyRing, event *p
 		return nil, fmt.Errorf("caldav/getCalendarObject: error converting to iCal calendar: (%w)", err)
 	}
 
-	homeSetPath, err := b.CalendarHomeSetPath(nil)
+	homeSetPath, err := b.CalendarHomeSetPath(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("caldav/getCalendarObject: error getting calendar home set path: (%w)", err)
 	}
@@ -376,7 +376,7 @@ func (b *backend) QueryCalendarObjects(ctx context.Context, path string, query *
 func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
 	//TODO: maybe impl opts?
 	//TODO: attendees maybe
-	homeSetPath, err := b.CalendarHomeSetPath(nil)
+	homeSetPath, err := b.CalendarHomeSetPath(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("caldav/PutCalendarObject: error getting calendar home set path: (%w)", err)
 	}
@@ -414,7 +414,7 @@ func (b *backend) PutCalendarObject(ctx context.Context, path string, calendar *
 }
 
 func (b *backend) DeleteCalendarObject(ctx context.Context, path string) error {
-	homeSetPath, err := b.CalendarHomeSetPath(nil)
+	homeSetPath, err := b.CalendarHomeSetPath(context.TODO())
 	if err != nil {
 		return fmt.Errorf("caldav/DeleteCalendarObject: error getting calendar home set path: (%w)", err)
 	}
