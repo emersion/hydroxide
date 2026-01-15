@@ -139,10 +139,11 @@ func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, sign
 		return nil, err
 	}
 
-	hash := crypto.SHA256
+	hash := crypto.SHA512
 
 	if signer != nil {
 		ops := &packet.OnePassSignature{
+			Version:    3,
 			SigType:    packet.SigTypeBinary,
 			Hash:       hash,
 			PubKeyAlgo: signer.PubKeyAlgo,
@@ -198,12 +199,17 @@ func (s signatureWriter) Write(data []byte) (int, error) {
 }
 
 func (s signatureWriter) Close() error {
+	sigLifetimeSecs := s.config.SigLifetime()
 	sig := &packet.Signature{
-		SigType:      packet.SigTypeBinary,
-		PubKeyAlgo:   s.signer.PubKeyAlgo,
-		Hash:         s.hashType,
-		CreationTime: s.config.Now(),
-		IssuerKeyId:  &s.signer.KeyId,
+		Version:           3,
+		SigType:           packet.SigTypeBinary,
+		PubKeyAlgo:        s.signer.PubKeyAlgo,
+		Hash:              s.hashType,
+		CreationTime:      s.config.Now(),
+		IssuerKeyId:       &s.signer.KeyId,
+		IssuerFingerprint: s.signer.Fingerprint,
+		Notations:         s.config.Notations(),
+		SigLifetimeSecs:   &sigLifetimeSecs,
 	}
 
 	if err := sig.Sign(s.h, s.signer, s.config); err != nil {
