@@ -386,8 +386,8 @@ const (
 type MessagePackage struct {
 	Type MessagePackageType
 
-	BodyKeyPacket        string
-	AttachmentKeyPackets map[string]string
+	BodyKeyPacket        string            `json:",omitempty"`
+	AttachmentKeyPackets map[string]string `json:",omitempty"`
 	Signature            int
 }
 
