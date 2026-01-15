@@ -389,12 +389,6 @@ type MessagePackage struct {
 	BodyKeyPacket        string
 	AttachmentKeyPackets map[string]string
 	Signature            int
-
-	// Only if encrypted for outside
-	PasswordHint string
-	Auth         interface{} // TODO
-	Token        string
-	EncToken     string `json:",omitempty"`
 }
 
 type MessagePackageSet struct {
