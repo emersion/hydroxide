@@ -38,6 +38,7 @@ Start by installing hydroxide:
 
 ```shell
 git clone https://github.com/emersion/hydroxide.git
+cd hydroxide
 go build ./cmd/hydroxide
 ```
 
