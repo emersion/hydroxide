@@ -101,6 +101,15 @@ For now, it only supports unencrypted local connections.
 hydroxide imap
 ```
 
+## Uninstalling
+
+To uninstall hydroxide, remove the binary and optionally the cloned repository:
+
+```shell
+sudo rm /usr/local/bin/hydroxide
+rm -rf ~/hydroxide
+```
+
 ## License
 
 MIT
