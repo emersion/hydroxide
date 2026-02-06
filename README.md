@@ -38,7 +38,9 @@ Start by installing hydroxide:
 
 ```shell
 git clone https://github.com/emersion/hydroxide.git
+cd hydroxide
 go build ./cmd/hydroxide
+sudo mv hydroxide /usr/local/bin/
 ```
 
 Then you'll need to login to ProtonMail via hydroxide, so that hydroxide can
@@ -97,6 +99,15 @@ For now, it only supports unencrypted local connections.
 
 ```shell
 hydroxide imap
+```
+
+## Uninstalling
+
+To uninstall hydroxide, remove the binary and optionally the cloned repository:
+
+```shell
+sudo rm /usr/local/bin/hydroxide
+rm -rf ~/hydroxide
 ```
 
 ## License
