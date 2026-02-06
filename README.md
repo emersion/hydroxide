@@ -40,6 +40,7 @@ Start by installing hydroxide:
 git clone https://github.com/emersion/hydroxide.git
 cd hydroxide
 go build ./cmd/hydroxide
+sudo mv hydroxide /usr/local/bin/
 ```
 
 Then you'll need to login to ProtonMail via hydroxide, so that hydroxide can
