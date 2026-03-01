@@ -306,8 +306,9 @@ func unlockPrivateKey(key *PrivateKey, userKeyRing openpgp.EntityList, keySalt [
 	return entity, nil
 }
 
-func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts map[string][]byte, passphraseBytes []byte) (openpgp.EntityList, error) {
+func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts map[string][]byte, passphraseBytes []byte) (openpgp.EntityList, uint64, error) {
 	var keyRing openpgp.EntityList
+	var primaryKeyID uint64
 	for _, key := range keys {
 		if key.Active != 1 {
 			continue
@@ -319,37 +320,43 @@ func unlockKeyRing(keys []*PrivateKey, userKeyRing openpgp.EntityList, keySalts 
 			continue
 		}
 
+		if key.Primary == 1 && entity.PrimaryKey != nil {
+			primaryKeyID = entity.PrimaryKey.KeyId
+		}
+
 		keyRing = append(keyRing, entity)
 	}
 
 	if len(keyRing) == 0 {
-		return nil, fmt.Errorf("failed to unlock any key")
+		return nil, 0, fmt.Errorf("failed to unlock any key")
 	}
-	return keyRing, nil
+	return keyRing, primaryKeyID, nil
 }
 
-func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase string) (openpgp.EntityList, error) {
+func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase string) (openpgp.EntityList, uint64, error) {
 	c.uid = auth.UID
 	c.accessToken = auth.AccessToken
 
 	u, err := c.GetCurrentUser()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	userKeyRing, err := unlockKeyRing(u.Keys, nil, keySalts, []byte(passphrase))
+	userKeyRing, userPrimaryKeyID, err := unlockKeyRing(u.Keys, nil, keySalts, []byte(passphrase))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	addrs, err := c.ListAddresses()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	var keyRing openpgp.EntityList
+	// Start with user keys (needed for contact encryption/signing)
+	// then append address keys (needed for email)
+	keyRing := append(openpgp.EntityList{}, userKeyRing...)
 	for _, addr := range addrs {
-		addrKeyRing, err := unlockKeyRing(addr.Keys, userKeyRing, keySalts, []byte(passphrase))
+		addrKeyRing, _, err := unlockKeyRing(addr.Keys, userKeyRing, keySalts, []byte(passphrase))
 		if err != nil {
 			log.Printf("warning: failed to unlock address <%v>: %v", addr.Email, err)
 			continue
@@ -359,12 +366,14 @@ func (c *Client) Unlock(auth *Auth, keySalts map[string][]byte, passphrase strin
 	}
 
 	if len(keyRing) == 0 {
-		return nil, fmt.Errorf("failed to unlock any key")
+		return nil, 0, fmt.Errorf("failed to unlock any key")
 	}
 
 	c.keyRing = keyRing
 
-	return keyRing, nil
+	// Return the primary USER key ID — this is the key Proton uses
+	// for contact encryption/signing (not address keys)
+	return keyRing, userPrimaryKeyID, nil
 }
 
 func (c *Client) Logout() error {

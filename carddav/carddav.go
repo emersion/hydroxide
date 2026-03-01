@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"path"
 	"strconv"
@@ -141,11 +142,12 @@ func (b *backend) toAddressObject(contact *protonmail.Contact, req *carddav.Addr
 }
 
 type backend struct {
-	c           *protonmail.Client
-	cache       map[string]*protonmail.Contact
-	locker      sync.Mutex
-	total       int
-	privateKeys openpgp.EntityList
+	c              *protonmail.Client
+	cache          map[string]*protonmail.Contact
+	locker         sync.Mutex
+	total          int
+	privateKeys    openpgp.EntityList
+	mainAccountKey *openpgp.Entity
 }
 
 func (b *backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
@@ -310,7 +312,7 @@ func (b *backend) PutAddressObject(ctx context.Context, path string, card vcard.
 		return nil, err
 	}
 
-	contactImport, err := formatCard(card, b.privateKeys[0])
+	contactImport, err := formatCard(card, b.mainAccountKey)
 	if err != nil {
 		return nil, err
 	}
@@ -397,16 +399,39 @@ func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
 	}
 }
 
-func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-chan *protonmail.Event) http.Handler {
+func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, primaryKeyID uint64, events <-chan *protonmail.Event) http.Handler {
 	if len(privateKeys) == 0 {
 		panic("hydroxide/carddav: no private key available")
 	}
 
+	// Find the primary account key by matching primaryKeyID.
+	// Proton's web client uses the user key (not address key) to
+	// encrypt and sign contacts. On modern accounts these differ,
+	// so we must use the correct key to avoid "decryption failed"
+	// errors in the Proton web UI.
+	var mainAccountKey *openpgp.Entity
+	if primaryKeyID != 0 {
+		for _, entity := range privateKeys {
+			if entity.PrimaryKey != nil && entity.PrimaryKey.KeyId == primaryKeyID {
+				mainAccountKey = entity
+				break
+			}
+		}
+	}
+	// Fallback to first key if primary not found
+	if mainAccountKey == nil {
+		mainAccountKey = privateKeys[0]
+		if primaryKeyID != 0 {
+			log.Printf("warning: primary key ID %x not found in key ring, falling back to first key", primaryKeyID)
+		}
+	}
+
 	b := &backend{
-		c:           c,
-		cache:       make(map[string]*protonmail.Contact),
-		total:       -1,
-		privateKeys: privateKeys,
+		c:              c,
+		cache:          make(map[string]*protonmail.Contact),
+		total:          -1,
+		privateKeys:    privateKeys,
+		mainAccountKey: mainAccountKey,
 	}
 
 	if events != nil {
