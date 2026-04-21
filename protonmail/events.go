@@ -10,6 +10,7 @@ type EventRefresh int
 const (
 	EventRefreshMail EventRefresh = 1 << iota
 	EventRefreshContacts
+	EventRefreshCalendar
 )
 
 type Event struct {
@@ -17,6 +18,7 @@ type Event struct {
 	Refresh  EventRefresh
 	Messages []*EventMessage
 	Contacts []*EventContact
+	Calendars []*EventCalendar
 	//ContactEmails
 	//Labels
 	//User
@@ -158,6 +160,12 @@ type EventContact struct {
 	ID      string
 	Action  EventAction
 	Contact *Contact
+}
+
+type EventCalendar struct {
+	ID       string
+	Action   EventAction
+	Calendar *Calendar
 }
 
 func (c *Client) GetEvent(last string) (*Event, error) {
