@@ -82,7 +82,9 @@ func ImportMessage(c *protonmail.Client, r io.Reader) error {
 	}
 
 	var ihdr mail.InlineHeader
-	ihdr.Set("Content-Type", hdr.Get("Content-Type"))
+	if hdr.Has("Content-Type") {
+		ihdr.Set("Content-Type", hdr.Get("Content-Type"))
+	}
 	ihdr.Set("Content-Transfer-Encoding", "8bit")
 
 	hdr.Del("Content-Type")
