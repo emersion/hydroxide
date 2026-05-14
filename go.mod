@@ -20,6 +20,7 @@ require (
 
 require (
 	github.com/cloudflare/circl v1.6.3 // indirect
+	github.com/teambition/rrule-go v1.8.2 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 )
