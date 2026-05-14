@@ -1,5 +1,7 @@
 # hydroxide
 
+[![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
+
 A third-party, open-source ProtonMail bridge. For power users only, designed to
 run on a server.
 
@@ -99,6 +101,16 @@ For now, it only supports unencrypted local connections.
 hydroxide imap
 ```
 
+## Contributing
+
+This project is [casually maintained]: pull requests are welcome, but the
+maintainer is busy with lots of other things and will be slow to respond.
+
+Also see [CONTRIBUTING.md].
+
 ## License
 
 MIT
+
+[casually maintained]: https://casuallymaintained.tech/
+[CONTRIBUTING.md]: https://github.com/emersion/.github/blob/main/CONTRIBUTING.md
