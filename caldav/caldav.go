@@ -5,6 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
@@ -33,7 +35,8 @@ func (b *backend) calendar() (*protonmail.Calendar, error) {
 		return nil, fmt.Errorf("hydroxide/caldav: no calendar available")
 	}
 
-	return calendars[0], nil
+	b.cal = calendars[0]
+	return b.cal, nil
 }
 
 func (b *backend) Calendar() (*caldav.Calendar, error) {
@@ -50,6 +53,13 @@ func (b *backend) Calendar() (*caldav.Calendar, error) {
 
 func formatCalendarObjectPath(id string) string {
 	return "/" + id + ".ics"
+}
+
+func parseCalendarObjectPath(path string) string {
+	// Remove leading "/" and trailing ".ics"
+	id := strings.TrimPrefix(path, "/")
+	id = strings.TrimSuffix(id, ".ics")
+	return id
 }
 
 func (b *backend) toCalendarObject(event *protonmail.CalendarEvent, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
@@ -101,11 +111,71 @@ func (b *backend) toCalendarObject(event *protonmail.CalendarEvent, req *caldav.
 }
 
 func (b *backend) GetCalendarObject(path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	panic("TODO")
+	// Parse event ID from path
+	eventID := parseCalendarObjectPath(path)
+	
+	cal, err := b.calendar()
+	if err != nil {
+		return nil, err
+	}
+
+	// List all events and find the one with matching ID
+	// Use a wide time range to ensure we get the event
+	now := time.Now()
+	filter := protonmail.CalendarEventFilter{
+		Start:    protonmail.NewTimestamp(now.AddDate(-10, 0, 0)), // 10 years ago
+		End:      protonmail.NewTimestamp(now.AddDate(10, 0, 0)),  // 10 years future
+		Timezone: "UTC",
+		Page:     0,
+		PageSize: 1000, // Large page size to get all events
+	}
+
+	events, err := b.c.ListCalendarEvents(cal.ID, &filter)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find event by ID
+	for _, event := range events {
+		if event.ID == eventID {
+			return b.toCalendarObject(event, req)
+		}
+	}
+
+	return nil, fmt.Errorf("hydroxide/caldav: event not found: %s", eventID)
 }
 
 func (b *backend) ListCalendarObjects(req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	panic("TODO")
+	cal, err := b.calendar()
+	if err != nil {
+		return nil, err
+	}
+
+	// List all events with a wide time range
+	now := time.Now()
+	filter := protonmail.CalendarEventFilter{
+		Start:    protonmail.NewTimestamp(now.AddDate(-10, 0, 0)), // 10 years ago
+		End:      protonmail.NewTimestamp(now.AddDate(10, 0, 0)),  // 10 years future
+		Timezone: "UTC",
+		Page:     0,
+		PageSize: 1000, // Large page size
+	}
+
+	events, err := b.c.ListCalendarEvents(cal.ID, &filter)
+	if err != nil {
+		return nil, err
+	}
+
+	cos := make([]caldav.CalendarObject, len(events))
+	for i, event := range events {
+		co, err := b.toCalendarObject(event, req)
+		if err != nil {
+			return nil, err
+		}
+		cos[i] = *co
+	}
+
+	return cos, nil
 }
 
 func (b *backend) QueryCalendarObjects(query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
@@ -144,7 +214,11 @@ func (b *backend) QueryCalendarObjects(query *caldav.CalendarQuery) ([]caldav.Ca
 }
 
 func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
-	// TODO
+	// TODO: implement event streaming
+	// For now, just drain the channel to prevent blocking
+	for range events {
+		// Event received, could trigger calendar refresh here
+	}
 }
 
 func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-chan *protonmail.Event) http.Handler {
