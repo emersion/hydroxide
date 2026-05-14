@@ -193,7 +193,7 @@ func listenAndServeCalDAV(addr string, authManager *auth.Manager, tlsConfig *tls
 
 			h, ok := handlers[username]
 			if !ok {
-				h = hydroxidecaldav.NewHandler(c, privateKeys)
+				h = hydroxidecaldav.NewHandler(c, privateKeys, nil)
 				handlers[username] = h
 			}
 
