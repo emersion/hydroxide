@@ -430,6 +430,10 @@ func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp
 		Subject:   subject,
 		Header:    formatHeader(mr.Header),
 		AddressID: fromAddr.ID,
+	    Sender: &protonmail.MessageAddress{
+		    Address: fromAddrStr,
+		    Name:    fromList[0].Name,
+	    },
 	}
 
 	// Create an empty draft
