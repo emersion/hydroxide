@@ -2,6 +2,7 @@ package carddav
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,10 +13,11 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/crypto/openpgp"
 	"github.com/emersion/go-vcard"
+	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/carddav"
 	"github.com/emersion/hydroxide/protonmail"
-	"golang.org/x/crypto/openpgp"
 )
 
 // TODO: use a HTTP error
@@ -25,6 +27,13 @@ var (
 	cleartextCardProps = []string{vcard.FieldVersion, vcard.FieldProductID, "X-PM-LABEL", "X-PM-GROUP"}
 	signedCardProps    = []string{vcard.FieldVersion, vcard.FieldProductID, vcard.FieldFormattedName, vcard.FieldUID, vcard.FieldEmail}
 )
+
+var addressBook = &carddav.AddressBook{
+	Path:            "/contacts/default",
+	Name:            "ProtonMail",
+	Description:     "ProtonMail contacts",
+	MaxResourceSize: 100 * 1024,
+}
 
 func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.ContactImport, error) {
 	vcard.ToV4(card)
@@ -83,14 +92,14 @@ func formatCard(card vcard.Card, privateKey *openpgp.Entity) (*protonmail.Contac
 func parseAddressObjectPath(p string) (string, error) {
 	dirname, filename := path.Split(p)
 	ext := path.Ext(filename)
-	if dirname != "/" || ext != ".vcf" {
+	if dirname != "/contacts/default/" || ext != ".vcf" {
 		return "", errNotFound
 	}
 	return strings.TrimSuffix(filename, ext), nil
 }
 
 func formatAddressObjectPath(id string) string {
-	return "/" + id + ".vcf"
+	return "/contacts/default/" + id + ".vcf"
 }
 
 func (b *backend) toAddressObject(contact *protonmail.Contact, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
@@ -139,13 +148,31 @@ type backend struct {
 	privateKeys openpgp.EntityList
 }
 
-func (b *backend) AddressBook() (*carddav.AddressBook, error) {
-	return &carddav.AddressBook{
-		Path:            "/",
-		Name:            "ProtonMail",
-		Description:     "ProtonMail contacts",
-		MaxResourceSize: 100 * 1024,
-	}, nil
+func (b *backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
+	return "/", nil
+}
+
+func (b *backend) AddressBookHomeSetPath(ctx context.Context) (string, error) {
+	return "/contacts", nil
+}
+
+func (b *backend) CreateAddressBook(ctx context.Context, ab *carddav.AddressBook) error {
+	return webdav.NewHTTPError(http.StatusForbidden, errors.New("cannot create new address book"))
+}
+
+func (b *backend) DeleteAddressBook(ctx context.Context, path string) error {
+	return webdav.NewHTTPError(http.StatusForbidden, errors.New("cannot delete address book"))
+}
+
+func (b *backend) ListAddressBooks(ctx context.Context) ([]carddav.AddressBook, error) {
+	return []carddav.AddressBook{*addressBook}, nil
+}
+
+func (b *backend) GetAddressBook(ctx context.Context, path string) (*carddav.AddressBook, error) {
+	if path != addressBook.Path {
+		return nil, webdav.NewHTTPError(http.StatusNotFound, errors.New("address book not found"))
+	}
+	return addressBook, nil
 }
 
 func (b *backend) cacheComplete() bool {
@@ -173,7 +200,7 @@ func (b *backend) deleteCache(id string) {
 	b.locker.Unlock()
 }
 
-func (b *backend) GetAddressObject(path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
+func (b *backend) GetAddressObject(ctx context.Context, path string, req *carddav.AddressDataRequest) (*carddav.AddressObject, error) {
 	id, err := parseAddressObjectPath(path)
 	if err != nil {
 		return nil, err
@@ -197,7 +224,7 @@ func (b *backend) GetAddressObject(path string, req *carddav.AddressDataRequest)
 	return b.toAddressObject(contact, req)
 }
 
-func (b *backend) ListAddressObjects(req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
+func (b *backend) ListAddressObjects(ctx context.Context, path string, req *carddav.AddressDataRequest) ([]carddav.AddressObject, error) {
 	if b.cacheComplete() {
 		b.locker.Lock()
 		defer b.locker.Unlock()
@@ -262,40 +289,51 @@ func (b *backend) ListAddressObjects(req *carddav.AddressDataRequest) ([]carddav
 	return aos, nil
 }
 
-func (b *backend) QueryAddressObjects(query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
-	panic("TODO")
+func (b *backend) QueryAddressObjects(ctx context.Context, path string, query *carddav.AddressBookQuery) ([]carddav.AddressObject, error) {
+	req := carddav.AddressDataRequest{AllProp: true}
+	if query != nil {
+		req = query.DataRequest
+	}
+
+	// TODO: optimize
+	all, err := b.ListAddressObjects(ctx, addressBook.Path, &req)
+	if err != nil {
+		return nil, err
+	}
+
+	return carddav.Filter(query, all)
 }
 
-func (b *backend) PutAddressObject(path string, card vcard.Card) (loc string, err error) {
+func (b *backend) PutAddressObject(ctx context.Context, path string, card vcard.Card, opts *carddav.PutAddressObjectOptions) (ao *carddav.AddressObject, err error) {
 	id, err := parseAddressObjectPath(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	contactImport, err := formatCard(card, b.privateKeys[0])
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var contact *protonmail.Contact
 
 	var req carddav.AddressDataRequest
-	if _, getErr := b.GetAddressObject(path, &req); getErr == nil {
+	if _, getErr := b.GetAddressObject(ctx, path, &req); getErr == nil {
 		contact, err = b.c.UpdateContact(id, contactImport)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 	} else {
 		resps, err := b.c.CreateContacts([]*protonmail.ContactImport{contactImport})
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if len(resps) != 1 {
-			return "", errors.New("hydroxide/carddav: expected exactly one response when creating contact")
+			return nil, errors.New("hydroxide/carddav: expected exactly one response when creating contact")
 		}
 		resp := resps[0]
 		if err := resp.Err(); err != nil {
-			return "", err
+			return nil, err
 		}
 		contact = resp.Response.Contact
 	}
@@ -303,10 +341,17 @@ func (b *backend) PutAddressObject(path string, card vcard.Card) (loc string, er
 
 	// TODO: increment b.total if necessary
 	b.putCache(contact)
-	return formatAddressObjectPath(contact.ID), nil
+
+	return &carddav.AddressObject{
+		Path:    formatAddressObjectPath(contact.ID),
+		ModTime: contact.ModifyTime.Time(),
+		// TODO: stronger ETag
+		ETag: fmt.Sprintf("%x%x", contact.ModifyTime, contact.Size),
+		Card: card,
+	}, nil
 }
 
-func (b *backend) DeleteAddressObject(path string) error {
+func (b *backend) DeleteAddressObject(ctx context.Context, path string) error {
 	id, err := parseAddressObjectPath(path)
 	if err != nil {
 		return err
@@ -368,5 +413,6 @@ func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-c
 		go b.receiveEvents(events)
 	}
 
-	return &carddav.Handler{b}
+	return &carddav.Handler{Backend: b}
 }
+
