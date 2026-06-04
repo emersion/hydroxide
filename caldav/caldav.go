@@ -26,7 +26,15 @@ type backend struct {
 }
 
 func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
-	// TODO
+	// We don't act on calendar events yet, but we MUST drain the channel:
+	// events.Receiver dispatches to every registered channel while holding its
+	// lock, over unbuffered channels. If this channel is never read, the first
+	// real event blocks the dispatcher forever with the lock held, which in
+	// turn deadlocks any later events.Manager.Register call (e.g. the first
+	// CardDAV request for the same account). Drain to keep the shared receiver
+	// healthy. TODO: invalidate calendar caches based on the event.
+	for range events {
+	}
 }
 
 func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, userKr openpgp.KeyRing, calKr openpgp.KeyRing, keyPacket string) (ical.Props, error) {
