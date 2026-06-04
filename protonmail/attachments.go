@@ -32,7 +32,8 @@ type Attachment struct {
 	//Headers    map[string]string
 	Signature string
 
-	unencryptedKey *packet.EncryptedKey
+	unencryptedKey  *packet.EncryptedKey
+	signaturePacket []byte // raw binary detached signature of the plaintext
 }
 
 // GenerateKey generates an encrypted key and encrypts it to the provided
@@ -66,6 +67,18 @@ func (att *Attachment) GenerateKey(to []*openpgp.Entity) (*packet.EncryptedKey, 
 	att.unencryptedKey = unencryptedKey
 	att.KeyPackets = encodedKeyPackets.String()
 	return unencryptedKey, nil
+}
+
+// Sign computes the detached signature of the plaintext attachment data that
+// Proton requires on every attachment, storing the raw binary signature for
+// CreateAttachment to upload. Must be called before CreateAttachment.
+func (att *Attachment) Sign(data []byte, signer *openpgp.Entity) error {
+	var buf bytes.Buffer
+	if err := openpgp.DetachSign(&buf, signer, bytes.NewReader(data), &packet.Config{}); err != nil {
+		return err
+	}
+	att.signaturePacket = buf.Bytes()
+	return nil
 }
 
 // Encrypt encrypts to w the data that will be written to the returned
@@ -173,7 +186,16 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 			return
 		}
 
-		// TODO: Signature
+		// Proton requires a detached signature of the plaintext (raw binary).
+		if len(att.signaturePacket) > 0 {
+			if w, err := mw.CreateFormFile("Signature", "Signature.pgp"); err != nil {
+				pw.CloseWithError(err)
+				return
+			} else if _, err := w.Write(att.signaturePacket); err != nil {
+				pw.CloseWithError(err)
+				return
+			}
+		}
 
 		pw.CloseWithError(mw.Close())
 	}()

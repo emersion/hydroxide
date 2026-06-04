@@ -223,6 +223,16 @@ func SendMail(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.Enti
 				return fmt.Errorf("cannot generate attachment key: %v", err)
 			}
 
+			// Buffer the plaintext so we can produce the detached signature
+			// Proton requires on every attachment before encrypting it.
+			attData, err := io.ReadAll(p.Body)
+			if err != nil {
+				return fmt.Errorf("cannot read attachment %q: %v", filename, err)
+			}
+			if err := att.Sign(attData, privateKey); err != nil {
+				return fmt.Errorf("cannot sign attachment %q: %v", filename, err)
+			}
+
 			log.Printf("uploading message attachment %q", filename)
 
 			pr, pw := io.Pipe()
@@ -233,7 +243,7 @@ func SendMail(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.Enti
 					pw.CloseWithError(err)
 					return
 				}
-				if _, err := io.Copy(cleartext, p.Body); err != nil {
+				if _, err := io.Copy(cleartext, bytes.NewReader(attData)); err != nil {
 					pw.CloseWithError(err)
 					return
 				}
