@@ -2,7 +2,9 @@ package protonmail
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/ProtonMail/go-crypto/openpgp"
@@ -419,7 +421,41 @@ type CalendarEventCreateOrUpdateData struct {
 	SharedEventContent   []CalendarEventCard `json:",omitempty"`
 	Permissions          int                 `json:",omitempty"`
 	IsOrganizer          int                 `json:",omitempty"`
-	// AttendeesEventContent, AddedProtonAttendees, Attendees, CancelledOccurrenceContent, IsPersonalSingleEdit, RemovedAttendeeAddresses ...
+
+	// Attendee invitation fields. AttendeesEventContent is the attendee card
+	// (ATTENDEE props with per-attendee tokens), encrypted with the shared
+	// session key. Attendees is the clear list (token + RSVP status).
+	// AddedProtonAttendees carries the shared session key wrapped to each
+	// internal (Proton) attendee's address key so they can decrypt the event.
+	AttendeesEventContent []CalendarEventCard `json:",omitempty"`
+	Attendees             []CalendarAttendee  `json:",omitempty"`
+	AddedProtonAttendees  []ProtonAttendee    `json:",omitempty"`
+	// CancelledOccurrenceContent, IsPersonalSingleEdit, RemovedAttendeeAddresses ...
+}
+
+// Proton attendee RSVP status (ATTENDEE_STATUS_API).
+const (
+	AttendeeStatusNeedsAction = 0
+	AttendeeStatusTentative   = 1
+	AttendeeStatusAccepted    = 2
+	AttendeeStatusDeclined    = 3
+)
+
+type CalendarAttendee struct {
+	Token  string
+	Status int
+}
+
+type ProtonAttendee struct {
+	Email            string
+	AddressKeyPacket string
+}
+
+// attendeeToken derives the Proton attendee token: SHA1(UID + normalized email)
+// as lowercase hex (40 chars). Mirrors WebClients generateAttendeeToken.
+func attendeeToken(uid, email string) string {
+	sum := sha1.Sum([]byte(uid + strings.ToLower(strings.TrimSpace(email))))
+	return hex.EncodeToString(sum[:])
 }
 
 type CalendarEventSyncReq struct {
@@ -481,12 +517,19 @@ var requiredSet = map[string]struct{}{
 }
 var personalEncryptedFields = []string{}*/
 
+// attendeeFields are handled separately (own card + tokens), so they are listed
+// in usedFields purely so getEventParts strips them instead of leaking them as
+// raw props into the shared encrypted part.
+var attendeeFields = []string{"attendee"}
+
 var usedFields = concat([][]string{
 	sharedSignedFields,
 	sharedEncryptedFields,
 
 	calendarSignedFields,
 	calendarEncryptedFields,
+
+	attendeeFields,
 	/*
 		personalSignedFields,
 		personalEncryptedFields,*/
@@ -734,6 +777,28 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 		return nil, "", fmt.Errorf("makeUpdateData: failed to decrypt keyring: (%w)", err)
 	}
 
+	config := &packet.Config{}
+
+	// Capture event UID and attendees before getEventParts strips them; tokens
+	// are derived from the UID and attendees get their own encrypted card.
+	eventUID := ""
+	if p := event.Props.Get(ical.PropUID); p != nil {
+		eventUID = p.Value
+	}
+	attendeeProps := event.Props.Values(ical.PropAttendee)
+
+	// Generate (or reuse) the shared session key once, up front: both the shared
+	// encrypted part and the attendees card are encrypted with it, and it's what
+	// gets wrapped to each Proton attendee's key.
+	sharedKeyPacket := ""
+	if oldEvent != nil {
+		sharedKeyPacket = oldEvent.SharedKeyPacket
+	}
+	sharedSessionKey, encryptedSharedSessionKey, err := getOrGenerateSessionKey(sharedKeyPacket, calKr, config)
+	if err != nil {
+		return nil, "", fmt.Errorf("makeUpdateData: failed to get or generate shared session key: (%w)", err)
+	}
+
 	sharedPartCal, calendarPartCal := getEventParts(&event)
 	sharedPart, err := encodePart(sharedPartCal)
 	if err != nil {
@@ -744,7 +809,6 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 		return nil, "", fmt.Errorf("makeUpdateData: failed to encode calendar part: (%w)", err)
 	}
 
-	config := &packet.Config{}
 	data := CalendarEventCreateOrUpdateData{}
 	data.Permissions = 1
 
@@ -796,15 +860,6 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 		data.SharedEventContent = append(data.SharedEventContent, card)
 	}
 	if encryptedSharedPart, ok := sharedPart[CalendarEventCardEncryptedAndSigned]; ok && encryptedSharedPart != "" {
-		sharedKeyPacket := ""
-		if oldEvent != nil {
-			sharedKeyPacket = oldEvent.SharedKeyPacket
-		}
-		sharedSessionKey, encryptedSharedSessionKey, err := getOrGenerateSessionKey(sharedKeyPacket, calKr, config)
-		if err != nil {
-			return nil, "", fmt.Errorf("makeUpdateData: failed to get or generate session key for shared part: (%w)", err)
-		}
-
 		if isCreate || sharedKeyPacket == "" {
 			data.SharedKeyPacket = encryptedSharedSessionKey
 		}
@@ -875,10 +930,22 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 		data.CalendarEventContent = append(data.CalendarEventContent, card)
 	}
 
-	// Attendees encrypted and clear parts ...
-	// Removed attendees emails ...
-	// Attendees encrypted session keys ...
-	// Cancelled occurrence parts ...
+	// Attendees: encrypted attendee card + clear RSVP list + per-attendee
+	// session-key packets (so internal Proton attendees can decrypt the event).
+	if len(attendeeProps) > 0 {
+		attCard, attendees, protonAttendees, err := c.buildAttendees(eventUID, attendeeProps, sharedSessionKey, userKeys, config)
+		if err != nil {
+			return nil, "", fmt.Errorf("makeUpdateData: failed to build attendees: (%w)", err)
+		}
+		if attCard != nil {
+			data.AttendeesEventContent = append(data.AttendeesEventContent, *attCard)
+		}
+		data.Attendees = attendees
+		if len(protonAttendees) > 0 {
+			data.AddedProtonAttendees = protonAttendees
+		}
+	}
+	// Removed attendees emails / cancelled occurrence parts: not handled yet.
 
 	member, err := FindMemberViewFromKeyring(bootstrap.Members, userKr)
 	if err != nil {
@@ -886,6 +953,100 @@ func makeUpdateData(c *Client, calID string, oldEvent *CalendarEvent, event ical
 	}
 
 	return &data, member.ID, nil
+}
+
+// attendeeEmail extracts the bare email address from an ATTENDEE property value
+// ("mailto:user@host", case-insensitive) or the raw value.
+func attendeeEmail(prop ical.Prop) string {
+	v := strings.TrimSpace(prop.Value)
+	if len(v) >= 7 && strings.EqualFold(v[:7], "mailto:") {
+		v = v[7:]
+	}
+	return strings.TrimSpace(v)
+}
+
+// buildAttendees produces the attendee card (ATTENDEE props with per-attendee
+// Proton tokens, encrypted with the event's shared session key), the clear RSVP
+// list, and the per-attendee session-key packets. For each attendee that has a
+// published Proton key, the shared session key is wrapped to that key so the
+// attendee can decrypt the event; attendees without a Proton key are still
+// recorded (Proton emails them an iCal invitation).
+func (c *Client) buildAttendees(uid string, attendeeProps []ical.Prop, sharedSessionKey *packet.EncryptedKey, signer *openpgp.Entity, config *packet.Config) (*CalendarEventCard, []CalendarAttendee, []ProtonAttendee, error) {
+	if sharedSessionKey == nil {
+		return nil, nil, nil, fmt.Errorf("buildAttendees: shared session key is required for attendees")
+	}
+
+	attEvent := ical.NewEvent()
+	if uid != "" {
+		attEvent.Props.SetText(ical.PropUID, uid)
+	}
+	attEvent.Props.SetDateTime(ical.PropDateTimeStamp, config.Now())
+
+	attendees := make([]CalendarAttendee, 0, len(attendeeProps))
+	var protonAttendees []ProtonAttendee
+
+	for _, prop := range attendeeProps {
+		email := attendeeEmail(prop)
+		if email == "" {
+			continue
+		}
+		token := attendeeToken(uid, email)
+
+		// Clone the property (and its params map) before adding the token, so we
+		// never mutate the caller's data.
+		params := make(ical.Params, len(prop.Params)+1)
+		for k, v := range prop.Params {
+			params[k] = append([]string(nil), v...)
+		}
+		params.Set("X-PM-TOKEN", token)
+		attEvent.Props.Add(&ical.Prop{Name: ical.PropAttendee, Params: params, Value: prop.Value})
+
+		attendees = append(attendees, CalendarAttendee{Token: token, Status: AttendeeStatusNeedsAction})
+
+		keyResp, err := c.GetPublicKeys(email)
+		if err != nil || keyResp.RecipientType != RecipientInternal || len(keyResp.Keys) == 0 {
+			continue // external attendee — no key packet, invitation goes by email
+		}
+		entity, err := keyResp.Keys[0].Entity()
+		if err != nil {
+			continue
+		}
+		encKey, ok := encryptionKey(entity, config.Now())
+		if !ok {
+			continue
+		}
+		keyPacket, err := serializeEncryptedKey(sharedSessionKey, encKey.PublicKey, config)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("buildAttendees: failed to wrap session key for %s: (%w)", email, err)
+		}
+		protonAttendees = append(protonAttendees, ProtonAttendee{Email: email, AddressKeyPacket: keyPacket})
+	}
+
+	if len(attendees) == 0 {
+		return nil, nil, nil, nil
+	}
+
+	attCal := makeIcal(nil, attEvent.Component)
+	buf := new(bytes.Buffer)
+	if err := ical.NewEncoder(buf).Encode(attCal); err != nil {
+		return nil, nil, nil, fmt.Errorf("buildAttendees: failed to encode attendee card: (%w)", err)
+	}
+	plaintext := buf.String()
+
+	signature, err := signPart(plaintext, signer, config)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("buildAttendees: failed to sign attendee card: (%w)", err)
+	}
+	encryptedData, err := encryptPart(plaintext, sharedSessionKey, nil, config)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("buildAttendees: failed to encrypt attendee card: (%w)", err)
+	}
+
+	return &CalendarEventCard{
+		Type:      CalendarEventCardEncryptedAndSigned,
+		Data:      encryptedData,
+		Signature: signature,
+	}, attendees, protonAttendees, nil
 }
 
 // calendarEventNotFoundCode is the ProtonMail API error code returned when an

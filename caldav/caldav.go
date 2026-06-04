@@ -71,9 +71,16 @@ func readEventCard(event *ical.Event, eventCard protonmail.CalendarEventCard, us
 	}
 	decodedEvent := &children[0]
 
-	for _, props := range decodedEvent.Props {
-		for _, p := range props {
-			event.Props.Set(&p)
+	for name, props := range decodedEvent.Props {
+		for i := range props {
+			p := props[i]
+			// ATTENDEE repeats (one per invitee); Set would collapse them to
+			// one, so Add those and Set the single-valued props.
+			if strings.EqualFold(name, ical.PropAttendee) {
+				event.Props.Add(&p)
+			} else {
+				event.Props.Set(&p)
+			}
 		}
 	}
 
@@ -97,6 +104,18 @@ func toIcalCalendar(event *protonmail.CalendarEvent, userKr openpgp.KeyRing, cal
 	for _, card := range event.CalendarEvents {
 		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.CalendarKeyPacket); err != nil {
 			return nil, fmt.Errorf("caldav/toIcalCalendar: error reading calendar event card: (%w)", err)
+		} else {
+			for name, _ := range propsMap {
+				calProps.Set(propsMap.Get(name))
+			}
+		}
+	}
+
+	// Attendees are stored in their own card, encrypted with the shared session
+	// key (same key packet as the shared part), so clients see invitees + RSVP.
+	for _, card := range event.AttendeesEvents {
+		if propsMap, err := readEventCard(merged, card, userKr, calKr, event.SharedKeyPacket); err != nil {
+			return nil, fmt.Errorf("caldav/toIcalCalendar: error reading attendees event card: (%w)", err)
 		} else {
 			for name, _ := range propsMap {
 				calProps.Set(propsMap.Get(name))

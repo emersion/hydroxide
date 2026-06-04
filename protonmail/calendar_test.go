@@ -1,10 +1,39 @@
 package protonmail
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"testing"
 )
+
+// TestAttendeeToken pins the Proton attendee-token derivation: SHA1(UID +
+// lowercased/trimmed email) as 40-char hex (mirrors WebClients
+// generateAttendeeToken). A wrong token means Proton can't match the invitee.
+func TestAttendeeToken(t *testing.T) {
+	uid := "abc-123@proton.me"
+	want := func(email string) string {
+		sum := sha1.Sum([]byte(uid + email))
+		return hex.EncodeToString(sum[:])
+	}
+
+	tok := attendeeToken(uid, "Friend@Example.COM")
+	if len(tok) != 40 {
+		t.Fatalf("token length = %d, want 40", len(tok))
+	}
+	if tok != want("friend@example.com") {
+		t.Fatalf("token = %s, want SHA1(uid+lowercased email)", tok)
+	}
+	// Case/whitespace in the email must not change the token.
+	if attendeeToken(uid, "  friend@example.com ") != tok {
+		t.Fatal("token should be invariant to surrounding whitespace and case")
+	}
+	// Different email => different token.
+	if attendeeToken(uid, "other@example.com") == tok {
+		t.Fatal("different emails must produce different tokens")
+	}
+}
 
 // TestIsEventNotFoundErr guards the create-vs-update detection in
 // UpdateCalendarEvent. GetCalendarEvent wraps its APIError with
