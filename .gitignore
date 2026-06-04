@@ -14,3 +14,5 @@
 .glide/
 
 auth.json
+/hydroxide
+/hydroxide-caldav
