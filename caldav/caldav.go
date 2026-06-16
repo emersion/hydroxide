@@ -359,5 +359,20 @@ func NewHandler(c *protonmail.Client, events <-chan *protonmail.Event) http.Hand
 		calEvents: make(map[string]map[string]*protonmail.CalendarEvent),
 	}
 
+	// Listen for Proton event updates and invalidate the cache automatically.
+	// This ensures new/modified calendar events from the Proton web/app
+	// become visible to CalDAV clients without restarting hydroxide.
+	if events != nil {
+		go func() {
+			for range events {
+				b.locker.Lock()
+				b.initialized = false
+				b.calEvents = make(map[string]map[string]*protonmail.CalendarEvent)
+				b.locker.Unlock()
+				log.Println("caldav: cache invalidated via event notification")
+			}
+		}()
+	}
+
 	return &caldav.Handler{Backend: b}
 }
