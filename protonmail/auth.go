@@ -203,6 +203,8 @@ func (c *Client) AuthRefresh(expiredAuth *Auth) (*Auth, error) {
 	auth := respData.auth()
 	//auth.EventID = expiredAuth.EventID
 	auth.PasswordMode = expiredAuth.PasswordMode
+	c.uid = auth.UID
+	c.accessToken = auth.AccessToken
 	return auth, nil
 }
 

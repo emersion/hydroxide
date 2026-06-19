@@ -313,6 +313,15 @@ func main() {
 					log.Fatal(err)
 				}
 				a.Scope = scope
+
+				// After 2FA the pre-2FA access token is rejected by the API; the
+				// /auth/2fa response carries only the elevated scope, not a new token.
+				// Refresh to obtain a usable full-scope token (and a rotated refresh token).
+				newAuth, err := c.AuthRefresh(a)
+				if err != nil {
+					log.Fatal(err)
+				}
+				a = newAuth
 			}
 		}
 
