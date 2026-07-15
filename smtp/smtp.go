@@ -388,7 +388,7 @@ func (s *session) AuthMechanisms() []string {
 }
 
 func (s *session) authPlain(username, password string) error {
-	c, privateKeys, err := s.be.sessions.Auth(username, password)
+	c, privateKeys, _, err := s.be.sessions.Auth(username, password)
 	if err != nil {
 		return err
 	}
