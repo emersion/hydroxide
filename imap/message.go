@@ -262,6 +262,11 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 				return nil, err
 			}
 
+			err = mbox.db.Sync([]*protonmail.Message{msg})
+			if err != nil {
+				return nil, fmt.Errorf("could not sync message w/ db: %w", err)
+			}
+
 			pw, err := w.CreatePart(inlineHeader(msg))
 			if err != nil {
 				return nil, err
@@ -308,6 +313,11 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 				return nil, err
 			}
 
+			err = mbox.db.Sync([]*protonmail.Message{msg})
+			if err != nil {
+				return nil, fmt.Errorf("could not sync message w/ db: %w", err)
+			}
+
 			h = inlineHeader(msg)
 			getBody = func() (io.Reader, error) {
 				return mbox.inlineBody(msg)
@@ -321,6 +331,11 @@ func (mbox *mailbox) fetchBodySection(msg *protonmail.Message, section *imap.Bod
 			msg, err := mbox.u.c.GetMessage(msg.ID)
 			if err != nil {
 				return nil, err
+			}
+
+			err = mbox.db.Sync([]*protonmail.Message{msg})
+			if err != nil {
+				return nil, fmt.Errorf("could not sync message w/ db: %w", err)
 			}
 
 			att := msg.Attachments[i]
