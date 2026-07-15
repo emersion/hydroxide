@@ -158,6 +158,24 @@ func ListUsernames() ([]string, error) {
 	return l, nil
 }
 
+func RemoveUser(username string) error {
+	auths, err := readCachedAuths()
+	if err != nil {
+		return err
+	}
+
+	if auths == nil {
+		return fmt.Errorf("user %q not found", username)
+	}
+
+	if _, ok := auths[username]; !ok {
+		return fmt.Errorf("user %q not found", username)
+	}
+
+	delete(auths, username)
+	return saveAuths(auths)
+}
+
 func GeneratePassword() (secretKey *[32]byte, password string, err error) {
 	var key [32]byte
 	if _, err = io.ReadFull(rand.Reader, key[:]); err != nil {
