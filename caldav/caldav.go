@@ -1,10 +1,13 @@
 package caldav
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/emersion/go-ical"
 	"github.com/emersion/go-webdav/caldav"
@@ -100,15 +103,60 @@ func (b *backend) toCalendarObject(event *protonmail.CalendarEvent, req *caldav.
 	}, nil
 }
 
-func (b *backend) GetCalendarObject(path string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
-	panic("TODO")
+func parseCalendarObjectPath(p string) (string, error) {
+	dirname, filename := path.Split(p)
+	ext := path.Ext(filename)
+	if dirname != "/" || ext != ".ics" {
+		return "", fmt.Errorf("caldav: not found")
+	}
+	return strings.TrimSuffix(filename, ext), nil
 }
 
-func (b *backend) ListCalendarObjects(req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
-	panic("TODO")
+func (b *backend) GetCalendarObject(ctx context.Context, reqPath string, req *caldav.CalendarCompRequest) (*caldav.CalendarObject, error) {
+	id, err := parseCalendarObjectPath(reqPath)
+	if err != nil {
+		return nil, err
+	}
+
+	cal, err := b.calendar()
+	if err != nil {
+		return nil, err
+	}
+
+	event, err := b.c.GetCalendarEvent(cal.ID, id)
+	if apiErr, ok := err.(*protonmail.APIError); ok && apiErr.Code == 13051 {
+		return nil, fmt.Errorf("caldav: not found")
+	} else if err != nil {
+		return nil, err
+	}
+
+	return b.toCalendarObject(event, req)
 }
 
-func (b *backend) QueryCalendarObjects(query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
+func (b *backend) ListCalendarObjects(ctx context.Context, reqPath string, req *caldav.CalendarCompRequest) ([]caldav.CalendarObject, error) {
+	cal, err := b.calendar()
+	if err != nil {
+		return nil, err
+	}
+
+	events, err := b.c.ListCalendarEvents(cal.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	cos := make([]caldav.CalendarObject, 0, len(events))
+	for _, event := range events {
+		co, err := b.toCalendarObject(event, req)
+		if err != nil {
+			return nil, err
+		}
+		cos = append(cos, *co)
+	}
+
+	return cos, nil
+}
+
+func (b *backend) QueryCalendarObjects(ctx context.Context, reqPath string, query *caldav.CalendarQuery) ([]caldav.CalendarObject, error) {
 	if query.CompFilter.Name != ical.CompCalendar {
 		return nil, fmt.Errorf("hydroxide/caldav: expected toplevel comp to be VCALENDAR")
 	}
@@ -141,6 +189,14 @@ func (b *backend) QueryCalendarObjects(query *caldav.CalendarQuery) ([]caldav.Ca
 	}
 
 	return cos, nil
+}
+
+func (b *backend) PutCalendarObject(ctx context.Context, reqPath string, calendar *ical.Calendar, opts *caldav.PutCalendarObjectOptions) (*caldav.CalendarObject, error) {
+	return nil, fmt.Errorf("hydroxide/caldav: PutCalendarObject not implemented")
+}
+
+func (b *backend) DeleteCalendarObject(ctx context.Context, reqPath string) error {
+	return fmt.Errorf("hydroxide/caldav: DeleteCalendarObject not implemented")
 }
 
 func (b *backend) receiveEvents(events <-chan *protonmail.Event) {
