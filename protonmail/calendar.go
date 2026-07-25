@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp"
 )
 
 const calendarPath = "/calendar/v1"
