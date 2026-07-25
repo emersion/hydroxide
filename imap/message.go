@@ -2,16 +2,18 @@ package imap
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"strings"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
-	"golang.org/x/crypto/openpgp"
 
 	"github.com/emersion/hydroxide/protonmail"
 )
@@ -80,6 +82,11 @@ func fetchEnvelope(msg *protonmail.Message) *imap.Envelope {
 	}
 }
 
+func msgBoundary(msg *protonmail.Message) string {
+	h := sha1.Sum([]byte(msg.ID))
+	return hex.EncodeToString(h[:])
+}
+
 func hasLabel(msg *protonmail.Message, labelID string) bool {
 	for _, id := range msg.LabelIDs {
 		if labelID == id {
@@ -139,7 +146,7 @@ func (mbox *mailbox) fetchBodyStructure(msg *protonmail.Message, extended bool) 
 	return &imap.BodyStructure{
 		MIMEType:    "multipart",
 		MIMESubType: "mixed",
-		// TODO: Params: map[string]string{"boundary": ...},
+		Params:      map[string]string{"boundary": msgBoundary(msg)},
 		// TODO: Size
 		Parts:    parts,
 		Extended: extended,
@@ -174,7 +181,7 @@ func (mbox *mailbox) attachmentBody(att *protonmail.Attachment) (io.Reader, erro
 func inlineHeader(msg *protonmail.Message) message.Header {
 	var h mail.InlineHeader
 	if msg.MIMEType != "" {
-		h.SetContentType(msg.MIMEType, nil)
+		h.SetContentType(msg.MIMEType, map[string]string{"charset": "utf-8"})
 	} else {
 		log.Println("Sending an inline header without its proper MIME type")
 	}
@@ -209,8 +216,10 @@ func mailAddressList(addresses []*protonmail.MessageAddress) []*mail.Address {
 }
 
 func messageHeader(msg *protonmail.Message) message.Header {
+	typeParams := map[string]string{"boundary": msgBoundary(msg)}
+
 	var h mail.Header
-	h.SetContentType("multipart/mixed", nil)
+	h.SetContentType("multipart/mixed", typeParams)
 	h.SetDate(msg.Time.Time())
 	h.SetSubject(msg.Subject)
 	h.SetAddressList("From", []*mail.Address{mailAddress(msg.Sender)})
@@ -227,7 +236,7 @@ func messageHeader(msg *protonmail.Message) message.Header {
 		h.SetAddressList("Bcc", mailAddressList(msg.BCCList))
 	}
 	// TODO: In-Reply-To
-	h.Set("Message-Id", messageID(msg))
+	h.Set("Message-Id", fmt.Sprintf("<%s>", messageID(msg)))
 	return h.Header
 }
 
@@ -421,6 +430,10 @@ func createMessage(c *protonmail.Client, u *protonmail.User, privateKeys openpgp
 		Subject:   subject,
 		Header:    formatHeader(mr.Header),
 		AddressID: fromAddr.ID,
+		Sender: &protonmail.MessageAddress{
+			Address: fromAddrStr,
+			Name:    fromList[0].Name,
+		},
 	}
 
 	// Create an empty draft

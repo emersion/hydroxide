@@ -1,19 +1,14 @@
 package config
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 )
 
 func Path(filename string) (string, error) {
-	configHome := os.Getenv("XDG_CONFIG_HOME")
-	if configHome == "" {
-		home := os.Getenv("HOME")
-		if home == "" {
-			return "", errors.New("HOME not set")
-		}
-		configHome = filepath.Join(home, ".config")
+	configHome, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
 	}
 
 	p := filepath.Join(configHome, "hydroxide", filename)

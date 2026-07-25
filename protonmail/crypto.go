@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
 // primaryIdentity returns the Identity marked as primary or the first identity
@@ -23,6 +23,30 @@ func primaryIdentity(e *openpgp.Entity) *openpgp.Identity {
 		}
 	}
 	return firstIdentity
+}
+
+func entityToKey(e *openpgp.Entity, ident *openpgp.Identity) *openpgp.Key {
+	return &openpgp.Key{
+		Entity:        e,
+		PublicKey:     e.PrimaryKey,
+		PrivateKey:    e.PrivateKey,
+		SelfSignature: ident.SelfSignature,
+		Revocations:   e.Revocations,
+	}
+}
+
+func entityPrimaryKey(e *openpgp.Entity) *openpgp.Key {
+	return entityToKey(e, primaryIdentity(e))
+}
+
+func entitySubkeyToKey(e *openpgp.Entity, subkey *openpgp.Subkey) *openpgp.Key {
+	return &openpgp.Key{
+		Entity:        e,
+		PublicKey:     subkey.PublicKey,
+		PrivateKey:    subkey.PrivateKey,
+		SelfSignature: subkey.Sig,
+		Revocations:   subkey.Revocations,
+	}
 }
 
 // encryptionKey returns the best candidate Key for encrypting a message to the
@@ -45,7 +69,7 @@ func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 
 	if candidateSubkey != -1 {
 		subkey := e.Subkeys[candidateSubkey]
-		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+		return *entitySubkeyToKey(e, &subkey), true
 	}
 
 	// If we don't have any candidate subkeys for encryption and
@@ -54,7 +78,7 @@ func encryptionKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 	// marked as ok to encrypt to, then we can obviously use it.
 	i := primaryIdentity(e)
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications && e.PrimaryKey.PubKeyAlgo.CanEncrypt() && !i.SelfSignature.SigExpired(now) {
-		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
+		return *entityToKey(e, i), true
 	}
 
 	// This Entity appears to be signing only.
@@ -78,14 +102,14 @@ func signingKey(e *openpgp.Entity, now time.Time) (openpgp.Key, bool) {
 
 	if candidateSubkey != -1 {
 		subkey := e.Subkeys[candidateSubkey]
-		return openpgp.Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+		return *entitySubkeyToKey(e, &subkey), true
 	}
 
 	// If we have no candidate subkey then we assume that it's ok to sign
 	// with the primary key.
 	i := primaryIdentity(e)
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign && !i.SelfSignature.SigExpired(now) {
-		return openpgp.Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
+		return *entityToKey(e, i), true
 	}
 
 	return openpgp.Key{}, false
@@ -106,15 +130,20 @@ func generateUnencryptedKey(cipher packet.CipherFunction, config *packet.Config)
 func symetricallyEncrypt(ciphertext io.Writer, symKey *packet.EncryptedKey, signer *packet.PrivateKey, hints *openpgp.FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
 	// From https://github.com/golang/crypto/blob/master/openpgp/write.go#L172
 
-	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, symKey.CipherFunc, symKey.Key, config)
+	cipherSuite := packet.CipherSuite{
+		Cipher: config.Cipher(),
+		Mode:   config.AEAD().Mode(),
+	}
+	encryptedData, err := packet.SerializeSymmetricallyEncrypted(ciphertext, symKey.CipherFunc, config.AEAD() != nil, cipherSuite, symKey.Key, config)
 	if err != nil {
 		return nil, err
 	}
 
-	hash := crypto.SHA256
+	hash := crypto.SHA512
 
 	if signer != nil {
 		ops := &packet.OnePassSignature{
+			Version:    3,
 			SigType:    packet.SigTypeBinary,
 			Hash:       hash,
 			PubKeyAlgo: signer.PubKeyAlgo,
@@ -170,12 +199,17 @@ func (s signatureWriter) Write(data []byte) (int, error) {
 }
 
 func (s signatureWriter) Close() error {
+	sigLifetimeSecs := s.config.SigLifetime()
 	sig := &packet.Signature{
-		SigType:      packet.SigTypeBinary,
-		PubKeyAlgo:   s.signer.PubKeyAlgo,
-		Hash:         s.hashType,
-		CreationTime: s.config.Now(),
-		IssuerKeyId:  &s.signer.KeyId,
+		Version:           3,
+		SigType:           packet.SigTypeBinary,
+		PubKeyAlgo:        s.signer.PubKeyAlgo,
+		Hash:              s.hashType,
+		CreationTime:      s.config.Now(),
+		IssuerKeyId:       &s.signer.KeyId,
+		IssuerFingerprint: s.signer.Fingerprint,
+		Notations:         s.config.Notations(),
+		SigLifetimeSecs:   &sigLifetimeSecs,
 	}
 
 	if err := sig.Sign(s.h, s.signer, s.config); err != nil {

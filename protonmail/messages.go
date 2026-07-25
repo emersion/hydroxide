@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/armor"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
 type MessageType int
@@ -54,9 +54,9 @@ type MessageAddress struct {
 }
 
 type Message struct {
-	ID             string
+	ID             string `json:",omitempty"`
 	Order          int64
-	ConversationID string
+	ConversationID string `json:",omitempty"`
 	Subject        string
 	Unread         int
 	Type           MessageType
@@ -77,10 +77,10 @@ type Message struct {
 	CCList         []*MessageAddress
 	BCCList        []*MessageAddress
 	ReplyTos       []*MessageAddress
-	Header         string
+	Header         string `json:",omitempty"`
 	Attachments    []*Attachment
 	LabelIDs       []string
-	ExternalID     string
+	ExternalID     string `json:",omitempty"`
 }
 
 func (msg *Message) Read(keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
@@ -386,15 +386,9 @@ const (
 type MessagePackage struct {
 	Type MessagePackageType
 
-	BodyKeyPacket        string
-	AttachmentKeyPackets map[string]string
+	BodyKeyPacket        string            `json:",omitempty"`
+	AttachmentKeyPackets map[string]string `json:",omitempty"`
 	Signature            int
-
-	// Only if encrypted for outside
-	PasswordHint string
-	Auth         interface{} // TODO
-	Token        string
-	EncToken     string
 }
 
 type MessagePackageSet struct {

@@ -8,9 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/armor"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/armor"
 )
 
 type Contact struct {
@@ -134,19 +133,6 @@ func NewSignedContactCard(r io.Reader, signer *openpgp.Entity) (*ContactCard, er
 		Data:      msg.String(),
 		Signature: sig.String(),
 	}, nil
-}
-
-func entityPrimaryKey(e *openpgp.Entity) *openpgp.Key {
-	var selfSig *packet.Signature
-	for _, ident := range e.Identities {
-		if selfSig == nil {
-			selfSig = ident.SelfSignature
-		} else if ident.SelfSignature.IsPrimaryId != nil && *ident.SelfSignature.IsPrimaryId {
-			selfSig = ident.SelfSignature
-			break
-		}
-	}
-	return &openpgp.Key{e, e.PrimaryKey, e.PrivateKey, selfSig}
 }
 
 type detachedSignatureReader struct {

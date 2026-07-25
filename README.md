@@ -1,5 +1,7 @@
 # hydroxide
 
+[![Casual Maintenance Intended](https://casuallymaintained.tech/badge.svg)](https://casuallymaintained.tech/)
+
 A third-party, open-source ProtonMail bridge. For power users only, designed to
 run on a server.
 
@@ -11,7 +13,7 @@ Rationale:
 * Standard-compliant (we don't care about Microsoft Outlook)
 * Fully open-source
 
-Feel free to join the IRC channel: ##emersion on irc.freenode.net.
+Feel free to join the IRC channel: #emersion on Libera Chat.
 
 ## How does it work?
 
@@ -38,7 +40,7 @@ Start by installing hydroxide:
 
 ```shell
 git clone https://github.com/emersion/hydroxide.git
-GO111MODULE=on go build ./cmd/hydroxide
+go build ./cmd/hydroxide
 ```
 
 Then you'll need to login to ProtonMail via hydroxide, so that hydroxide can
@@ -91,12 +93,24 @@ Tested on GNOME (Evolution) and Android (DAVDroid).
 
 ### IMAP
 
+⚠️  **Warning**: IMAP support is work-in-progress. Here be dragons.
+
 For now, it only supports unencrypted local connections.
 
 ```shell
 hydroxide imap
 ```
 
+## Contributing
+
+This project is [casually maintained]: pull requests are welcome, but the
+maintainer is busy with lots of other things and will be slow to respond.
+
+Also see [CONTRIBUTING.md].
+
 ## License
 
 MIT
+
+[casually maintained]: https://casuallymaintained.tech/
+[CONTRIBUTING.md]: https://github.com/emersion/.github/blob/main/CONTRIBUTING.md

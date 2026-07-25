@@ -8,10 +8,11 @@ import (
 	"log"
 	"strings"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
 	"github.com/emersion/go-message/mail"
+	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/packet"
 
 	"github.com/emersion/hydroxide/auth"
 	"github.com/emersion/hydroxide/protonmail"
@@ -37,22 +38,25 @@ func formatHeader(h mail.Header) string {
 	return b.String()
 }
 
-type session struct {
-	c           *protonmail.Client
-	u           *protonmail.User
-	privateKeys openpgp.EntityList
-	addrs       []*protonmail.Address
+func bccFromRest(rcpt []string, ignoreMails []*mail.Address) []*mail.Address {
+	ignore := make(map[string]struct{})
+	for _, mail := range ignoreMails {
+		ignore[mail.Address] = struct{}{}
+	}
+
+	final := make([]*mail.Address, 0, len(rcpt))
+	for _, addr := range rcpt {
+		if _, exists := ignore[addr]; exists {
+			continue
+		}
+		final = append(final, &mail.Address{
+			Address: addr,
+		})
+	}
+	return final
 }
 
-func (s *session) Mail(from string, options smtp.MailOptions) error {
-	return nil
-}
-
-func (s *session) Rcpt(to string) error {
-	return nil
-}
-
-func (s *session) Data(r io.Reader) error {
+func SendMail(c *protonmail.Client, u *protonmail.User, privateKeys openpgp.EntityList, addrs []*protonmail.Address, rcpt []string, r io.Reader) error {
 	// Parse the incoming MIME message header
 	mr, err := mail.CreateReader(r)
 	if err != nil {
@@ -65,6 +69,10 @@ func (s *session) Data(r io.Reader) error {
 	ccList, _ := mr.Header.AddressList("Cc")
 	bccList, _ := mr.Header.AddressList("Bcc")
 
+	if len(bccList) == 0 {
+		bccList = bccFromRest(rcpt, append(toList, ccList...))
+	}
+
 	if len(fromList) != 1 {
 		return errors.New("the From field must contain exactly one address")
 	}
@@ -75,7 +83,7 @@ func (s *session) Data(r io.Reader) error {
 	rawFrom := fromList[0]
 	fromAddrStr := rawFrom.Address
 	var fromAddr *protonmail.Address
-	for _, addr := range s.addrs {
+	for _, addr := range addrs {
 		if strings.EqualFold(addr.Email, fromAddrStr) {
 			fromAddr = addr
 			break
@@ -95,7 +103,7 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	var privateKey *openpgp.Entity
-	for _, e := range s.privateKeys {
+	for _, e := range privateKeys {
 		if e.PrimaryKey.KeyId == encryptedPrivateKey.PrimaryKey.KeyId {
 			privateKey = e
 			break
@@ -105,13 +113,19 @@ func (s *session) Data(r io.Reader) error {
 		return errors.New("sender address key hasn't been decrypted")
 	}
 
+	msgID, err := mr.Header.MessageID()
+	if err != nil {
+		return fmt.Errorf("failed to parse Message-Id: %v", err)
+	}
+
 	msg := &protonmail.Message{
-		ToList:    toPMAddressList(toList),
-		CCList:    toPMAddressList(ccList),
-		BCCList:   toPMAddressList(bccList),
-		Subject:   subject,
-		Header:    formatHeader(mr.Header),
-		AddressID: fromAddr.ID,
+		ToList:     toPMAddressList(toList),
+		CCList:     toPMAddressList(ccList),
+		BCCList:    toPMAddressList(bccList),
+		Subject:    subject,
+		Header:     formatHeader(mr.Header),
+		AddressID:  fromAddr.ID,
+		ExternalID: msgID,
 		Sender: &protonmail.MessageAddress{
 			Address: rawFrom.Address,
 			Name:    rawFrom.Name,
@@ -139,7 +153,7 @@ func (s *session) Data(r io.Reader) error {
 			ExternalID: inReplyTo,
 			AddressID:  fromAddr.ID,
 		}
-		total, msgs, err := s.c.ListMessages(&filter)
+		total, msgs, err := c.ListMessages(&filter)
 		if err != nil {
 			return err
 		}
@@ -148,7 +162,7 @@ func (s *session) Data(r io.Reader) error {
 		}
 	}
 
-	msg, err = s.c.CreateDraftMessage(msg, parentID)
+	msg, err = c.CreateDraftMessage(msg, parentID)
 	if err != nil {
 		return fmt.Errorf("cannot create draft message: %v", err)
 	}
@@ -226,7 +240,7 @@ func (s *session) Data(r io.Reader) error {
 				pw.CloseWithError(cleartext.Close())
 			}()
 
-			att, err = s.c.CreateAttachment(att, pr)
+			att, err = c.CreateAttachment(att, pr)
 			if err != nil {
 				return fmt.Errorf("cannot upload attachment: %v", err)
 			}
@@ -254,7 +268,7 @@ func (s *session) Data(r io.Reader) error {
 		return err
 	}
 
-	msg, err = s.c.UpdateDraftMessage(msg)
+	msg, err = c.UpdateDraftMessage(msg)
 	if err != nil {
 		return fmt.Errorf("cannot update draft message: %v", err)
 	}
@@ -269,7 +283,7 @@ func (s *session) Data(r io.Reader) error {
 	var plaintextRecipients []string
 	encryptedRecipients := make(map[string]*openpgp.Entity)
 	for _, rcpt := range recipients {
-		resp, err := s.c.GetPublicKeys(rcpt.Address)
+		resp, err := c.GetPublicKeys(rcpt.Address)
 		if err != nil {
 			return fmt.Errorf("cannot get public key for address %q: %v", rcpt.Address, err)
 		}
@@ -345,7 +359,7 @@ func (s *session) Data(r io.Reader) error {
 		outgoing.Packages = append(outgoing.Packages, encryptedSet)
 	}
 
-	_, _, err = s.c.SendMessage(outgoing)
+	_, _, err = c.SendMessage(outgoing)
 	if err != nil {
 		return fmt.Errorf("cannot send message: %v", err)
 	}
@@ -353,12 +367,92 @@ func (s *session) Data(r io.Reader) error {
 	return nil
 }
 
-func (s *session) Reset() {}
+type session struct {
+	be *backend
+
+	c           *protonmail.Client
+	u           *protonmail.User
+	privateKeys openpgp.EntityList
+	addrs       []*protonmail.Address
+
+	allReceivers []string
+}
+
+var _ interface {
+	smtp.Session
+	smtp.AuthSession
+} = (*session)(nil)
+
+func (s *session) AuthMechanisms() []string {
+	return []string{sasl.Plain}
+}
+
+func (s *session) authPlain(username, password string) error {
+	c, privateKeys, err := s.be.sessions.Auth(username, password)
+	if err != nil {
+		return err
+	}
+
+	u, err := c.GetCurrentUser()
+	if err != nil {
+		return err
+	}
+
+	addrs, err := c.ListAddresses()
+	if err != nil {
+		return err
+	}
+
+	// TODO: decrypt private keys in u.Addresses
+
+	log.Printf("%s logged in", username)
+	s.c = c
+	s.u = u
+	s.privateKeys = privateKeys
+	s.addrs = addrs
+	return nil
+}
+
+func (s *session) Auth(mech string) (sasl.Server, error) {
+	return sasl.NewPlainServer(func(identity, username, password string) error {
+		if identity != "" && identity != username {
+			return fmt.Errorf("invalid SASL PLAIN identity")
+		}
+		return s.authPlain(username, password)
+	}), nil
+}
+
+func (s *session) Mail(from string, options *smtp.MailOptions) error {
+	if s.c == nil {
+		return smtp.ErrAuthRequired
+	}
+	return nil
+}
+
+func (s *session) Rcpt(to string, options *smtp.RcptOptions) error {
+	if s.c == nil {
+		return smtp.ErrAuthRequired
+	}
+	if to == "" {
+		return nil
+	}
+	s.allReceivers = append(s.allReceivers, to)
+	return nil
+}
+
+func (s *session) Data(r io.Reader) error {
+	if s.c == nil {
+		return smtp.ErrAuthRequired
+	}
+	return SendMail(s.c, s.u, s.privateKeys, s.addrs, s.allReceivers, r)
+}
+
+func (s *session) Reset() {
+	s.allReceivers = nil
+}
 
 func (s *session) Logout() error {
-	s.c = nil
-	s.u = nil
-	s.privateKeys = nil
+	*s = session{be: s.be}
 	return nil
 }
 
@@ -366,31 +460,8 @@ type backend struct {
 	sessions *auth.Manager
 }
 
-func (be *backend) Login(_ *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	c, privateKeys, err := be.sessions.Auth(username, password)
-	if err != nil {
-		return nil, err
-	}
-
-	u, err := c.GetCurrentUser()
-	if err != nil {
-		return nil, err
-	}
-
-	addrs, err := c.ListAddresses()
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: decrypt private keys in u.Addresses
-
-	log.Printf("%s logged in", username)
-
-	return &session{c, u, privateKeys, addrs}, nil
-}
-
-func (be *backend) AnonymousLogin(_ *smtp.ConnectionState) (smtp.Session, error) {
-	return nil, smtp.ErrAuthRequired
+func (be *backend) NewSession(_ *smtp.Conn) (smtp.Session, error) {
+	return &session{be: be}, nil
 }
 
 func New(sessions *auth.Manager) smtp.Backend {

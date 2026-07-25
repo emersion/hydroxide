@@ -6,11 +6,11 @@ import (
 	"io"
 	"strings"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/emersion/go-mbox"
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 	"github.com/emersion/go-message/textproto"
-	"golang.org/x/crypto/openpgp"
 
 	"github.com/emersion/hydroxide/protonmail"
 )
@@ -28,7 +28,7 @@ func writeMessage(c *protonmail.Client, privateKeys openpgp.KeyRing, w io.Writer
 	}
 
 	mh := mail.Header{message.Header{th}}
-	mh.SetContentType(mimeType, nil)
+	mh.SetContentType(mimeType, map[string]string{"charset": "utf-8"})
 	mh.Set("Content-Transfer-Encoding", "quoted-printable")
 
 	// TODO: add support for attachments
