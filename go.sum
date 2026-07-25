@@ -77,6 +77,6 @@ golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8T
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 github.com/emersion/go-ical v0.0.0-20200224201310-cd514449c39e h1:YGM1sI7edZOt8KAfX9Miq/X99d2QXdgjkJ7vN4HjxAA=
-github.com/emersion/go-ical v0.0.0-20200224201310-cd514449c39e/go.mod h1:BEksegNspIkjCQfmzWgsgbu6KdeJ/4LwUZs7DMBzjzw=
+github.com/emersion/go-ical v0.0.0-20200224201310-cd514449c39e/go.mod h1:4xVTBPcT43a1pp3vdaa+FuRdX5XhKCZPpWv7m0z9ByM=
 github.com/teambition/rrule-go v1.8.2 h1:h27nSndG9WjeXw25c86cO4tT+3iup9kh+P0x74N1+30=
 github.com/teambition/rrule-go v1.8.2/go.mod h1:Ieq5AbrKGciP1V//Wq8ktsTXwSwJHDD5mD/wLBGl3p4=
