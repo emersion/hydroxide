@@ -2,6 +2,7 @@ package caldav
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 	"golang.org/x/crypto/openpgp"
 
@@ -39,7 +41,34 @@ func (b *backend) calendar() (*protonmail.Calendar, error) {
 	return calendars[0], nil
 }
 
-func (b *backend) Calendar() (*caldav.Calendar, error) {
+func (b *backend) CurrentUserPrincipal(ctx context.Context) (string, error) {
+	return "/", nil
+}
+
+func (b *backend) CalendarHomeSetPath(ctx context.Context) (string, error) {
+	return "/calendars", nil
+}
+
+func (b *backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar) error {
+	return webdav.NewHTTPError(http.StatusForbidden, errors.New("cannot create new calendar"))
+}
+
+func (b *backend) ListCalendars(ctx context.Context) ([]caldav.Calendar, error) {
+	cal, err := b.calendar()
+	if err != nil {
+		return nil, err
+	}
+	return []caldav.Calendar{{
+		Path:        "/",
+		Name:        cal.Name,
+		Description: cal.Description,
+	}}, nil
+}
+
+func (b *backend) GetCalendar(ctx context.Context, path string) (*caldav.Calendar, error) {
+	if path != "/" {
+		return nil, webdav.NewHTTPError(http.StatusNotFound, errors.New("calendar not found"))
+	}
 	cal, err := b.calendar()
 	if err != nil {
 		return nil, err
@@ -217,5 +246,5 @@ func NewHandler(c *protonmail.Client, privateKeys openpgp.EntityList, events <-c
 		go b.receiveEvents(events)
 	}
 
-	return &caldav.Handler{b}
+	return &caldav.Handler{Backend: b}
 }
