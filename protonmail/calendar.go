@@ -1,9 +1,14 @@
 package protonmail
 
 import (
+	"encoding/base64"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+
+	"github.com/ProtonMail/go-crypto/openpgp"
 )
 
 const calendarPath = "/calendar/v1"
@@ -22,26 +27,60 @@ type Calendar struct {
 type CalendarEventPermissions int
 
 type CalendarEvent struct {
-	ID                string
-	CalendarID        string
-	CalendarKeyPacket string
-	CreateTime        Timestamp
-	LastEditTime      Timestamp
-	Author            string
-	Permissions       CalendarEventPermissions
-	SharedKeyPacket   string
-	SharedEvents      []CalendarEventCard
-	CalendarEvents    interface{}
-	PersonalEvent     []CalendarEventCard
+	ID                string   `json:"ID"`
+	CalendarID        string   `json:"CalendarID"`
+	CalendarKeyPacket string   `json:"CalendarKeyPacket"`
+	CreateTime        Timestamp `json:"CreateTime"`
+	LastEditTime      Timestamp `json:"LastEditTime"`
+	StartTime         Timestamp `json:"StartTime"`
+	EndTime           Timestamp `json:"EndTime"`
+	StartTimezone     string   `json:"StartTimezone,omitempty"`
+	EndTimezone       string   `json:"EndTimezone,omitempty"`
+	FullDay           int      `json:"FullDay"`
+	UID               string   `json:"UID"`
+	IsOrganizer       int      `json:"IsOrganizer"`
+	RecurrenceID      string   `json:"RecurrenceID,omitempty"`
+	Author            string   `json:"Author"`
+	Permissions       CalendarEventPermissions `json:"Permissions"`
+	SharedKeyPacket   string   `json:"SharedKeyPacket"`
+	SharedEvents      []CalendarEventCard `json:"SharedEvents"`
+	CalendarEvents    []CalendarEventCard `json:"CalendarEvents"`
+	PersonalEvents    []CalendarEventCard `json:"PersonalEvents"`
+	AttendeesEvents   []CalendarEventCard `json:"AttendeesEvents"`
 }
 
 type CalendarEventCardType int
 
+const (
+	CalendarEventCardClear CalendarEventCardType = 1 + iota
+	CalendarEventCardSigned
+	CalendarEventCardEncryptedAndSigned
+)
+
+func (t CalendarEventCardType) Signed() bool {
+	switch t {
+	case CalendarEventCardSigned, CalendarEventCardEncryptedAndSigned:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t CalendarEventCardType) Encrypted() bool {
+	switch t {
+	case CalendarEventCardEncryptedAndSigned:
+		return true
+	default:
+		return false
+	}
+}
+
 type CalendarEventCard struct {
-	Type      CalendarEventCardType
-	Data      string
-	Signature string
-	MemberID  string
+	Type      CalendarEventCardType `json:"Type"`
+	Data      string                `json:"Data"`
+	Signature string                `json:"Signature"`
+	MemberID  string                `json:"MemberID"`
+	Author    string                `json:"Author"`
 }
 
 func (c *Client) ListCalendars(page, pageSize int) ([]*Calendar, error) {
@@ -97,5 +136,120 @@ func (c *Client) ListCalendarEvents(calendarID string, filter *CalendarEventFilt
 	}
 
 	return respData.Events, nil
+}
 
+func (c *Client) GetCalendarEvent(calendarID, eventID string) (*CalendarEvent, error) {
+	req, err := c.newRequest(http.MethodGet, calendarPath+"/"+calendarID+"/events/"+eventID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Event *CalendarEvent
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Event, nil
+}
+
+type CalendarEventImport struct {
+	SharedEvents    []CalendarEventCard `json:"SharedEvents,omitempty"`
+	CalendarEvents  []CalendarEventCard `json:"CalendarEvents,omitempty"`
+	PersonalEvents  []CalendarEventCard `json:"PersonalEvents,omitempty"`
+	AttendeesEvents []CalendarEventCard `json:"AttendeesEvents,omitempty"`
+}
+
+func (c *Client) CreateCalendarEvent(calendarID string, event *CalendarEventImport) (*CalendarEvent, error) {
+	req, err := c.newJSONRequest(http.MethodPost, calendarPath+"/"+calendarID+"/events", event)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Event *CalendarEvent
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Event, nil
+}
+
+func (c *Client) UpdateCalendarEvent(calendarID, eventID string, event *CalendarEventImport) (*CalendarEvent, error) {
+	req, err := c.newJSONRequest(http.MethodPut, calendarPath+"/"+calendarID+"/events/"+eventID, event)
+	if err != nil {
+		return nil, err
+	}
+
+	var respData struct {
+		resp
+		Event *CalendarEvent
+	}
+	if err := c.doJSON(req, &respData); err != nil {
+		return nil, err
+	}
+
+	return respData.Event, nil
+}
+
+func (c *Client) DeleteCalendarEvent(calendarID, eventID string) error {
+	req, err := c.newRequest(http.MethodDelete, calendarPath+"/"+calendarID+"/events/"+eventID, nil)
+	if err != nil {
+		return err
+	}
+
+	var respData resp
+	if err := c.doJSON(req, &respData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (card *CalendarEventCard) Read(keyring openpgp.KeyRing) (*openpgp.MessageDetails, error) {
+	if !card.Type.Encrypted() {
+		md := &openpgp.MessageDetails{
+			IsEncrypted:    false,
+			IsSigned:       false,
+			UnverifiedBody: strings.NewReader(card.Data),
+		}
+
+		if !card.Type.Signed() {
+			return md, nil
+		}
+
+		signed := strings.NewReader(card.Data)
+		signature := strings.NewReader(card.Signature)
+		signer, err := openpgp.CheckArmoredDetachedSignature(keyring, signed, signature, nil)
+		md.IsSigned = true
+		md.SignatureError = err
+		if signer != nil {
+			md.SignedByKeyId = signer.PrimaryKey.KeyId
+			md.SignedBy = entityPrimaryKey(signer)
+		}
+		return md, nil
+	}
+
+	ciphertext := base64.NewDecoder(base64.StdEncoding, strings.NewReader(card.Data))
+	md, err := openpgp.ReadMessage(ciphertext, keyring, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if card.Type.Signed() {
+		r := &detachedSignatureReader{
+			md:        md,
+			signature: strings.NewReader(card.Signature),
+			keyring:   keyring,
+		}
+		r.body = io.TeeReader(md.UnverifiedBody, &r.signed)
+
+		md.UnverifiedBody = r
+	}
+
+	return md, nil
 }
