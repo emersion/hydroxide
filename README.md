@@ -5,6 +5,10 @@
 A third-party, open-source ProtonMail bridge. For power users only, designed to
 run on a server.
 
+> ### ⚠️ Heads up!
+>
+> This project has [migrated to Codeberg](https://codeberg.org/emersion/hydroxide).
+
 hydroxide supports CardDAV, IMAP and SMTP.
 
 Rationale:
