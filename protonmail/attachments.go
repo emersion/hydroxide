@@ -2,9 +2,11 @@ package protonmail
 
 import (
 	"bytes"
+	"crypto"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -74,7 +76,8 @@ func (att *Attachment) GenerateKey(to []*openpgp.Entity) (*packet.EncryptedKey, 
 // Prior to calling Encrypt, an attachment key must have been generated with
 // GenerateKey.
 //
-// signed is ignored for now.
+// If signed is not nil, a detached signature of the plaintext is generated
+// and stored in att.Signature (base64-encoded).
 func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cleartext io.WriteCloser, err error) {
 	config := &packet.Config{}
 
@@ -82,13 +85,92 @@ func (att *Attachment) Encrypt(ciphertext io.Writer, signed *openpgp.Entity) (cl
 		return nil, errors.New("cannot encrypt attachment: no attachment key available")
 	}
 
-	// TODO: sign and store signature in att.Signature
+	var signer *packet.PrivateKey
+	if signed != nil {
+		signKey, ok := signingKey(signed, config.Now())
+		if !ok {
+			return nil, errors.New("no valid signing keys")
+		}
+		signer = signKey.PrivateKey
+		if signer == nil {
+			return nil, errors.New("no private key in signing key")
+		}
+		if signer.Encrypted {
+			return nil, errors.New("signing key must be decrypted")
+		}
+	}
 
 	hints := &openpgp.FileHints{
 		IsBinary: true,
 		FileName: att.Name,
 	}
-	return symetricallyEncrypt(ciphertext, att.unencryptedKey, nil, hints, config)
+	inner, err := symetricallyEncrypt(ciphertext, att.unencryptedKey, signer, hints, config)
+	if err != nil {
+		return nil, err
+	}
+
+	if signer == nil {
+		return inner, nil
+	}
+
+	// Wrap the writer to also compute a detached signature over the plaintext.
+	hashType := crypto.SHA512
+	h := hashType.New()
+	return &attachmentSignWriter{
+		inner:    inner,
+		h:        h,
+		hashType: hashType,
+		signer:   signer,
+		att:      att,
+		config:   config,
+	}, nil
+}
+
+// attachmentSignWriter wraps the inner encrypted writer and tees plaintext
+// into a hash. On Close, it generates a detached signature and stores it
+// base64-encoded in att.Signature.
+type attachmentSignWriter struct {
+	inner    io.WriteCloser
+	h        hash.Hash
+	hashType crypto.Hash
+	signer   *packet.PrivateKey
+	att      *Attachment
+	config   *packet.Config
+}
+
+func (w *attachmentSignWriter) Write(data []byte) (int, error) {
+	w.h.Write(data)
+	return w.inner.Write(data)
+}
+
+func (w *attachmentSignWriter) Close() error {
+	if err := w.inner.Close(); err != nil {
+		return err
+	}
+
+	sigLifetimeSecs := w.config.SigLifetime()
+	sig := &packet.Signature{
+		Version:           3,
+		SigType:           packet.SigTypeBinary,
+		PubKeyAlgo:        w.signer.PubKeyAlgo,
+		Hash:              w.hashType,
+		CreationTime:      w.config.Now(),
+		IssuerKeyId:       &w.signer.KeyId,
+		IssuerFingerprint: w.signer.Fingerprint,
+		SigLifetimeSecs:   &sigLifetimeSecs,
+	}
+
+	if err := sig.Sign(w.h, w.signer, w.config); err != nil {
+		return fmt.Errorf("cannot sign attachment: %v", err)
+	}
+
+	var buf bytes.Buffer
+	if err := sig.Serialize(&buf); err != nil {
+		return fmt.Errorf("cannot serialize attachment signature: %v", err)
+	}
+
+	w.att.Signature = base64.StdEncoding.EncodeToString(buf.Bytes())
+	return nil
 }
 
 func (att *Attachment) Read(ciphertext io.Reader, keyring openpgp.KeyRing, prompt openpgp.PromptFunction) (*openpgp.MessageDetails, error) {
@@ -173,7 +255,19 @@ func (c *Client) CreateAttachment(att *Attachment, r io.Reader) (created *Attach
 			return
 		}
 
-		// TODO: Signature
+		// Upload detached signature if present
+		if att.Signature != "" {
+			if w, err := mw.CreateFormFile("Signature", "Signature.pgp"); err != nil {
+				pw.CloseWithError(err)
+				return
+			} else {
+				sigReader := base64.NewDecoder(base64.StdEncoding, strings.NewReader(att.Signature))
+				if _, err := io.Copy(w, sigReader); err != nil {
+					pw.CloseWithError(err)
+					return
+				}
+			}
+		}
 
 		pw.CloseWithError(mw.Close())
 	}()
