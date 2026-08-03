@@ -24,7 +24,7 @@ type backend struct {
 }
 
 func (be *backend) Login(info *imap.ConnInfo, username, password string) (imapbackend.User, error) {
-	c, privateKeys, err := be.sessions.Auth(username, password)
+	c, privateKeys, _, err := be.sessions.Auth(username, password)
 	if err != nil {
 		return nil, err
 	}

@@ -120,25 +120,25 @@ func EncryptAndSave(auth *CachedAuth, username string, secretKey *[32]byte) erro
 	return saveAuths(auths)
 }
 
-func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string) (openpgp.EntityList, error) {
+func authenticate(c *protonmail.Client, cachedAuth *CachedAuth, username string) (openpgp.EntityList, uint64, error) {
 	auth, err := c.AuthRefresh(&cachedAuth.Auth)
 	if apiErr, ok := err.(*protonmail.APIError); ok && apiErr.Code == 10013 {
 		// Invalid refresh token, re-authenticate
 		authInfo, err := c.AuthInfo(username)
 		if err != nil {
-			return nil, fmt.Errorf("cannot re-authenticate: failed to get auth info: %v", err)
+			return nil, 0, fmt.Errorf("cannot re-authenticate: failed to get auth info: %v", err)
 		}
 
 		auth, err = c.Auth(username, cachedAuth.LoginPassword, authInfo)
 		if err != nil {
-			return nil, fmt.Errorf("cannot re-authenticate: %v", err)
+			return nil, 0, fmt.Errorf("cannot re-authenticate: %v", err)
 		}
 
 		if auth.TwoFactor.Enabled != 0 {
-			return nil, fmt.Errorf("cannot re-authenticate: two factor authentication enabled, please login again manually")
+			return nil, 0, fmt.Errorf("cannot re-authenticate: two factor authentication enabled, please login again manually")
 		}
 	} else if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	cachedAuth.Auth = *auth
 
@@ -171,6 +171,7 @@ type session struct {
 	hashedSecretKey []byte
 	c               *protonmail.Client
 	privateKeys     openpgp.EntityList
+	primaryKeyID    uint64
 }
 
 var ErrUnauthorized = errors.New("Invalid username or password")
@@ -180,11 +181,11 @@ type Manager struct {
 	sessions  map[string]*session
 }
 
-func (m *Manager) Auth(username, password string) (*protonmail.Client, openpgp.EntityList, error) {
+func (m *Manager) Auth(username, password string) (*protonmail.Client, openpgp.EntityList, uint64, error) {
 	var secretKey [32]byte
 	passwordBytes, err := base64.StdEncoding.DecodeString(password)
 	if err != nil || len(passwordBytes) != len(secretKey) {
-		return nil, nil, ErrUnauthorized
+		return nil, nil, 0, ErrUnauthorized
 	}
 	copy(secretKey[:], passwordBytes)
 
@@ -192,61 +193,62 @@ func (m *Manager) Auth(username, password string) (*protonmail.Client, openpgp.E
 	if ok {
 		err := bcrypt.CompareHashAndPassword(s.hashedSecretKey, secretKey[:])
 		if err != nil {
-			return nil, nil, ErrUnauthorized
+			return nil, nil, 0, ErrUnauthorized
 		}
 	} else {
 		auths, err := readCachedAuths()
 		if err != nil && !os.IsNotExist(err) {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 
 		encrypted, ok := auths[username]
 		if !ok {
-			return nil, nil, ErrUnauthorized
+			return nil, nil, 0, ErrUnauthorized
 		}
 
 		decrypted, err := decrypt(encrypted, &secretKey)
 		if err != nil {
-			return nil, nil, ErrUnauthorized
+			return nil, nil, 0, ErrUnauthorized
 		}
 
 		var cachedAuth CachedAuth
 		if err := json.Unmarshal(decrypted, &cachedAuth); err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 
 		c := m.newClient()
 		c.ReAuth = func() error {
-			if _, err := authenticate(c, &cachedAuth, username); err != nil {
+			if _, _, err := authenticate(c, &cachedAuth, username); err != nil {
 				return err
 			}
 			return EncryptAndSave(&cachedAuth, username, &secretKey)
 		}
 
 		// authenticate updates cachedAuth with the new refresh token
-		privateKeys, err := authenticate(c, &cachedAuth, username)
+		privateKeys, primaryKeyID, err := authenticate(c, &cachedAuth, username)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 
 		if err := EncryptAndSave(&cachedAuth, username, &secretKey); err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 
 		hashed, err := bcrypt.GenerateFromPassword(secretKey[:], bcrypt.DefaultCost)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, 0, err
 		}
 
 		s = &session{
 			c:               c,
 			privateKeys:     privateKeys,
 			hashedSecretKey: hashed,
+			primaryKeyID:    primaryKeyID,
 		}
 		m.sessions[username] = s
 	}
 
-	return s.c, s.privateKeys, nil
+	return s.c, s.privateKeys, s.primaryKeyID, nil
 }
 
 func NewManager(newClient func() *protonmail.Client) *Manager {
