@@ -19,6 +19,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/emersion/hydroxide/auth"
+	"github.com/emersion/hydroxide/caldav"
 	"github.com/emersion/hydroxide/carddav"
 	"github.com/emersion/hydroxide/config"
 	"github.com/emersion/hydroxide/events"
@@ -163,6 +164,52 @@ func listenAndServeCardDAV(addr string, authManager *auth.Manager, eventsManager
 	return s.ListenAndServe()
 }
 
+func listenAndServeCalDAV(addr string, authManager *auth.Manager, tlsConfig *tls.Config) error {
+	handlers := make(map[string]http.Handler)
+
+	s := &http.Server{
+		Addr:      addr,
+		TLSConfig: tlsConfig,
+		Handler: http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+			resp.Header().Set("WWW-Authenticate", "Basic")
+
+			username, password, ok := req.BasicAuth()
+			if !ok {
+				resp.WriteHeader(http.StatusUnauthorized)
+				io.WriteString(resp, "Credentials are required")
+				return
+			}
+
+			c, privateKeys, err := authManager.Auth(username, password)
+			if err != nil {
+				if err == auth.ErrUnauthorized {
+					resp.WriteHeader(http.StatusUnauthorized)
+				} else {
+					resp.WriteHeader(http.StatusInternalServerError)
+				}
+				io.WriteString(resp, err.Error())
+				return
+			}
+
+			h, ok := handlers[username]
+			if !ok {
+				h = caldav.NewHandler(c, privateKeys)
+				handlers[username] = h
+			}
+
+			h.ServeHTTP(resp, req)
+		}),
+	}
+
+	if s.TLSConfig != nil {
+		log.Println("CalDAV server listening with TLS on", s.Addr)
+		return s.ListenAndServeTLS("", "")
+	}
+
+	log.Println("CalDAV server listening on", s.Addr)
+	return s.ListenAndServe()
+}
+
 func isMbox(br *bufio.Reader) (bool, error) {
 	prefix := []byte("From ")
 	b, err := br.Peek(len(prefix))
@@ -174,51 +221,58 @@ func isMbox(br *bufio.Reader) (bool, error) {
 
 const usage = `usage: hydroxide [options...] <command>
 Commands:
-	auth <username>		Login to ProtonMail via hydroxide
-	carddav			Run hydroxide as a CardDAV server
-	export-secret-keys <username> Export secret keys
-	imap			Run hydroxide as an IMAP server
-	import-messages <username> [file]	Import messages
-	export-messages [options...] <username>	Export messages
-	sendmail <username> -- <args...>	sendmail(1) interface
-	serve			Run all servers
-	smtp			Run hydroxide as an SMTP server
-	status			View hydroxide status
+        auth <username>         Login to ProtonMail via hydroxide
+        carddav                 Run hydroxide as a CardDAV server
+        caldav                 Run hydroxide as a CalDAV server
+        export-secret-keys <username> Export secret keys
+        imap                    Run hydroxide as an IMAP server
+        import-messages <username> [file]       Import messages
+        export-messages [options...] <username> Export messages
+        sendmail <username> -- <args...>        sendmail(1) interface
+        serve                   Run all servers
+        smtp                    Run hydroxide as an SMTP server
+        status                  View hydroxide status
 
 Global options:
-	-debug
-		Enable debug logs
-	-api-endpoint <url>
-		ProtonMail API endpoint
-	-app-version <version>
-		ProtonMail application version
-	-smtp-host example.com
-		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
-	-imap-host example.com
-		Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
-	-carddav-host example.com
-		Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
-	-smtp-port example.com
-		SMTP port on which hydroxide listens, defaults to 1025
-	-imap-port example.com
-		IMAP port on which hydroxide listens, defaults to 1143
-	-carddav-port example.com
-		CardDAV port on which hydroxide listens, defaults to 8080
-	-disable-imap
-		Disable IMAP for hydroxide serve
-	-disable-smtp
-		Disable SMTP for hydroxide serve
-	-disable-carddav
-		Disable CardDAV for hydroxide serve
-	-tls-cert /path/to/cert.pem
-		Path to the certificate to use for incoming connections (Optional)
-	-tls-key /path/to/key.pem
-		Path to the certificate key to use for incoming connections (Optional)
-	-tls-client-ca /path/to/ca.pem
-		If set, clients must provide a certificate signed by the given CA (Optional)
+        -debug
+                Enable debug logs
+        -api-endpoint <url>
+                ProtonMail API endpoint
+        -app-version <version>
+                ProtonMail application version
+        -smtp-host example.com
+                Allowed SMTP email hostname on which hydroxide listens, defaults to 127.0.0.1
+        -imap-host example.com
+                Allowed IMAP email hostname on which hydroxide listens, defaults to 127.0.0.1
+        -carddav-host example.com
+                Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1
+        -caldav-host example.com
+                Allowed CalDAV email hostname on which hydroxide listens, defaults to 127.0.0.1
+        -smtp-port example.com
+                SMTP port on which hydroxide listens, defaults to 1025
+        -imap-port example.com
+                IMAP port on which hydroxide listens, defaults to 1143
+        -carddav-port example.com
+                CardDAV port on which hydroxide listens, defaults to 8080
+        -caldav-port example.com
+                CalDAV port on which hydroxide listens, defaults to 8081
+        -disable-imap
+                Disable IMAP for hydroxide serve
+        -disable-smtp
+                Disable SMTP for hydroxide serve
+        -disable-carddav
+                Disable CardDAV for hydroxide serve
+        -disable-caldav
+                Disable CalDAV for hydroxide serve
+        -tls-cert /path/to/cert.pem
+                Path to the certificate to use for incoming connections (Optional)
+        -tls-key /path/to/key.pem
+                Path to the certificate key to use for incoming connections (Optional)
+        -tls-client-ca /path/to/ca.pem
+                If set, clients must provide a certificate signed by the given CA (Optional)
 
 Environment variables:
-	HYDROXIDE_BRIDGE_PASS	Don't prompt for the bridge password, use this variable instead
+        HYDROXIDE_BRIDGE_PASS   Don't prompt for the bridge password, use this variable instead
 `
 
 func main() {
@@ -237,6 +291,10 @@ func main() {
 	carddavHost := flag.String("carddav-host", "127.0.0.1", "Allowed CardDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
 	carddavPort := flag.String("carddav-port", "8080", "CardDAV port on which hydroxide listens, defaults to 8080")
 	disableCardDAV := flag.Bool("disable-carddav", false, "Disable CardDAV for hydroxide serve")
+
+	caldavHost := flag.String("caldav-host", "127.0.0.1", "Allowed CalDAV email hostname on which hydroxide listens, defaults to 127.0.0.1")
+	caldavPort := flag.String("caldav-port", "8081", "CalDAV port on which hydroxide listens, defaults to 8081")
+	disableCalDAV := flag.Bool("disable-caldav", false, "Disable CalDAV for hydroxide serve")
 
 	tlsCert := flag.String("tls-cert", "", "Path to the certificate to use for incoming connections")
 	tlsCertKey := flag.String("tls-key", "", "Path to the certificate key to use for incoming connections")
@@ -272,12 +330,12 @@ func main() {
 
 		var a *protonmail.Auth
 		/*if cachedAuth, ok := auths[username]; ok {
-			var err error
-			a, err = c.AuthRefresh(a)
-			if err != nil {
-				// TODO: handle expired token error
-				log.Fatal(err)
-			}
+		        var err error
+		        a, err = c.AuthRefresh(a)
+		        if err != nil {
+		                // TODO: handle expired token error
+		                log.Fatal(err)
+		        }
 		}*/
 
 		var loginPassword string
@@ -502,15 +560,20 @@ func main() {
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 		log.Fatal(listenAndServeCardDAV(addr, authManager, eventsManager, tlsConfig))
+	case "caldav":
+		addr := *caldavHost + ":" + *caldavPort
+		authManager := auth.NewManager(newClient)
+		log.Fatal(listenAndServeCalDAV(addr, authManager, tlsConfig))
 	case "serve":
 		smtpAddr := *smtpHost + ":" + *smtpPort
 		imapAddr := *imapHost + ":" + *imapPort
 		carddavAddr := *carddavHost + ":" + *carddavPort
+		caldavAddr := *caldavHost + ":" + *caldavPort
 
 		authManager := auth.NewManager(newClient)
 		eventsManager := events.NewManager()
 
-		done := make(chan error, 3)
+		done := make(chan error, 4)
 		if !*disableSMTP {
 			go func() {
 				done <- listenAndServeSMTP(smtpAddr, debug, authManager, tlsConfig)
@@ -524,6 +587,11 @@ func main() {
 		if !*disableCardDAV {
 			go func() {
 				done <- listenAndServeCardDAV(carddavAddr, authManager, eventsManager, tlsConfig)
+			}()
+		}
+		if !*disableCalDAV {
+			go func() {
+				done <- listenAndServeCalDAV(caldavAddr, authManager, tlsConfig)
 			}()
 		}
 		log.Fatal(<-done)
