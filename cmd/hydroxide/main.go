@@ -48,31 +48,47 @@ func newClient() *protonmail.Client {
 	}
 }
 
-func askPass(prompt string) ([]byte, error) {
-	f := os.Stdin
-	if !term.IsTerminal(int(f.Fd())) {
-		// This can happen if stdin is used for piping data
-		// TODO: the following assumes Unix
-		var err error
-		if f, err = os.Open("/dev/tty"); err != nil {
-			return nil, err
+type Prompter struct {
+	scanner *bufio.Scanner
+}
+
+func newPrompter() *Prompter {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return &Prompter{
+			scanner: bufio.NewScanner(os.Stdin),
 		}
-		defer f.Close()
+	}
+	return &Prompter{}
+}
+
+func (r *Prompter) askPass(prompt string) (string, error) {
+	if r.scanner != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Reading password from stdin.\nk")
+		if !r.scanner.Scan() {
+			if err := r.scanner.Err(); err != nil {
+				return "", err
+			}
+			return "", io.ErrUnexpectedEOF
+		}
+		password := r.scanner.Text()
+		if len(password) == 0 {
+			return password, fmt.Errorf("zero length password")
+		}
+		return password, nil
 	}
 	fmt.Fprintf(os.Stderr, "%v: ", prompt)
-	b, err := term.ReadPassword(int(f.Fd()))
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "\n")
 	}
-	return b, err
+	return string(b), err
 }
 
 func askBridgePass() (string, error) {
 	if v := os.Getenv("HYDROXIDE_BRIDGE_PASS"); v != "" {
 		return v, nil
 	}
-	b, err := askPass("Bridge password")
-	return string(b), err
+	return newPrompter().askPass("Bridge password")
 }
 
 func listenAndServeSMTP(addr string, debug bool, authManager *auth.Manager, tlsConfig *tls.Config) error {
@@ -262,7 +278,9 @@ func main() {
 	cmd := flag.Arg(0)
 	switch cmd {
 	case "auth":
-		authCmd.Parse(flag.Args()[1:])
+		if err := authCmd.Parse(flag.Args()[1:]); err != nil {
+			log.Fatal(err)
+		}
 		username := authCmd.Arg(0)
 		if username == "" {
 			log.Fatal("usage: hydroxide auth <username>")
@@ -279,41 +297,37 @@ func main() {
 				log.Fatal(err)
 			}
 		}*/
+		prompter := newPrompter()
+		loginPassword, err := prompter.askPass("Password")
+		if err != nil {
+			log.Fatal(err)
+		}
 
-		var loginPassword string
-		if a == nil {
-			if pass, err := askPass("Password"); err != nil {
-				log.Fatal(err)
-			} else {
-				loginPassword = string(pass)
+		authInfo, err := c.AuthInfo(username)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		a, err = c.Auth(username, loginPassword, authInfo)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if a.TwoFactor.Enabled != 0 {
+			if a.TwoFactor.TOTP != 1 {
+				log.Fatal("Only TOTP is supported as a 2FA method")
 			}
 
-			authInfo, err := c.AuthInfo(username)
+			code, err := prompter.askPass("2FA TOTP code")
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			a, err = c.Auth(username, loginPassword, authInfo)
+			scope, err := c.AuthTOTP(code)
 			if err != nil {
 				log.Fatal(err)
 			}
-
-			if a.TwoFactor.Enabled != 0 {
-				if a.TwoFactor.TOTP != 1 {
-					log.Fatal("Only TOTP is supported as a 2FA method")
-				}
-
-				scanner := bufio.NewScanner(os.Stdin)
-				fmt.Printf("2FA TOTP code: ")
-				scanner.Scan()
-				code := scanner.Text()
-
-				scope, err := c.AuthTOTP(code)
-				if err != nil {
-					log.Fatal(err)
-				}
-				a.Scope = scope
-			}
+			a.Scope = scope
 		}
 
 		var mailboxPassword string
@@ -325,10 +339,10 @@ func main() {
 			if a.PasswordMode == protonmail.PasswordTwo {
 				prompt = "Mailbox password"
 			}
-			if pass, err := askPass(prompt); err != nil {
+
+			mailboxPassword, err = prompter.askPass(prompt)
+			if err != nil {
 				log.Fatal(err)
-			} else {
-				mailboxPassword = string(pass)
 			}
 		}
 
