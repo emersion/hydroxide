@@ -174,7 +174,7 @@ func isMbox(br *bufio.Reader) (bool, error) {
 
 const usage = `usage: hydroxide [options...] <command>
 Commands:
-	auth <username>		Login to ProtonMail via hydroxide
+	auth <command> [flags]		Manage authentication
 	carddav			Run hydroxide as a CardDAV server
 	export-secret-keys <username> Export secret keys
 	imap			Run hydroxide as an IMAP server
@@ -183,7 +183,11 @@ Commands:
 	sendmail <username> -- <args...>	sendmail(1) interface
 	serve			Run all servers
 	smtp			Run hydroxide as an SMTP server
-	status			View hydroxide status
+
+AUTH COMMANDS
+	login:       Log in to a Proton account
+	logout:      Log out of a Proton account
+	status:      View all logged in accounts
 
 Global options:
 	-debug
@@ -263,115 +267,153 @@ func main() {
 	switch cmd {
 	case "auth":
 		authCmd.Parse(flag.Args()[1:])
-		username := authCmd.Arg(0)
-		if username == "" {
-			log.Fatal("usage: hydroxide auth <username>")
+		subcommand := authCmd.Arg(0)
+
+		if subcommand == "" {
+			fmt.Println("hydroxide auth")
+			fmt.Println()
+			fmt.Println("USAGE")
+			fmt.Println("  hydroxide auth <command> [flags]")
+			fmt.Println()
+			fmt.Println("AVAILABLE COMMANDS")
+			fmt.Println("  login       Log in to a Proton account")
+			fmt.Println("  logout      Log out of a Proton account")
+			fmt.Println("  status      View all logged in accounts")
+			break
 		}
 
-		c := newClient()
-
-		var a *protonmail.Auth
-		/*if cachedAuth, ok := auths[username]; ok {
-			var err error
-			a, err = c.AuthRefresh(a)
+		if subcommand == "status" {
+			usernames, err := auth.ListUsernames()
 			if err != nil {
-				// TODO: handle expired token error
 				log.Fatal(err)
 			}
-		}*/
 
-		var loginPassword string
-		if a == nil {
-			if pass, err := askPass("Password"); err != nil {
-				log.Fatal(err)
+			if len(usernames) == 0 {
+				fmt.Printf("No logged in user.\n")
 			} else {
-				loginPassword = string(pass)
+				fmt.Printf("%v logged in user(s):\n", len(usernames))
+				for _, u := range usernames {
+					fmt.Printf("- %v\n", u)
+				}
+			}
+			break
+		}
+
+		if subcommand == "logout" {
+			username := authCmd.Arg(1)
+			if username == "" {
+				log.Fatal("usage: hydroxide auth logout <username>")
 			}
 
-			authInfo, err := c.AuthInfo(username)
+			err := auth.RemoveUser(username)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			a, err = c.Auth(username, loginPassword, authInfo)
-			if err != nil {
-				log.Fatal(err)
+			fmt.Printf("Logged out user: %v\n", username)
+			break
+		}
+
+		if subcommand == "login" {
+			username := authCmd.Arg(1)
+			if username == "" {
+				log.Fatal("usage: hydroxide auth login <username>")
 			}
 
-			if a.TwoFactor.Enabled != 0 {
-				if a.TwoFactor.TOTP != 1 {
-					log.Fatal("Only TOTP is supported as a 2FA method")
+			c := newClient()
+
+			var a *protonmail.Auth
+			/*if cachedAuth, ok := auths[username]; ok {
+				var err error
+				a, err = c.AuthRefresh(a)
+				if err != nil {
+					// TODO: handle expired token error
+					log.Fatal(err)
+				}
+			}*/
+
+			var loginPassword string
+			if a == nil {
+				if pass, err := askPass("Password"); err != nil {
+					log.Fatal(err)
+				} else {
+					loginPassword = string(pass)
 				}
 
-				scanner := bufio.NewScanner(os.Stdin)
-				fmt.Printf("2FA TOTP code: ")
-				scanner.Scan()
-				code := scanner.Text()
-
-				scope, err := c.AuthTOTP(code)
+				authInfo, err := c.AuthInfo(username)
 				if err != nil {
 					log.Fatal(err)
 				}
-				a.Scope = scope
-			}
-		}
 
-		var mailboxPassword string
-		if a.PasswordMode == protonmail.PasswordSingle {
-			mailboxPassword = loginPassword
-		}
-		if mailboxPassword == "" {
-			prompt := "Password"
-			if a.PasswordMode == protonmail.PasswordTwo {
-				prompt = "Mailbox password"
+				a, err = c.Auth(username, loginPassword, authInfo)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				if a.TwoFactor.Enabled != 0 {
+					if a.TwoFactor.TOTP != 1 {
+						log.Fatal("Only TOTP is supported as a 2FA method")
+					}
+
+					scanner := bufio.NewScanner(os.Stdin)
+					fmt.Printf("2FA TOTP code: ")
+					scanner.Scan()
+					code := scanner.Text()
+
+					scope, err := c.AuthTOTP(code)
+					if err != nil {
+						log.Fatal(err)
+					}
+					a.Scope = scope
+				}
 			}
-			if pass, err := askPass(prompt); err != nil {
+
+			var mailboxPassword string
+			if a.PasswordMode == protonmail.PasswordSingle {
+				mailboxPassword = loginPassword
+			}
+			if mailboxPassword == "" {
+				prompt := "Password"
+				if a.PasswordMode == protonmail.PasswordTwo {
+					prompt = "Mailbox password"
+				}
+				if pass, err := askPass(prompt); err != nil {
+					log.Fatal(err)
+				} else {
+					mailboxPassword = string(pass)
+				}
+			}
+
+			keySalts, err := c.ListKeySalts()
+			if err != nil {
 				log.Fatal(err)
-			} else {
-				mailboxPassword = string(pass)
 			}
-		}
 
-		keySalts, err := c.ListKeySalts()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		_, err = c.Unlock(a, keySalts, mailboxPassword)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		secretKey, bridgePassword, err := auth.GeneratePassword()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		err = auth.EncryptAndSave(&auth.CachedAuth{
-			Auth:            *a,
-			LoginPassword:   loginPassword,
-			MailboxPassword: mailboxPassword,
-			KeySalts:        keySalts,
-		}, username, secretKey)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println("Bridge password:", bridgePassword)
-	case "status":
-		usernames, err := auth.ListUsernames()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if len(usernames) == 0 {
-			fmt.Printf("No logged in user.\n")
-		} else {
-			fmt.Printf("%v logged in user(s):\n", len(usernames))
-			for _, u := range usernames {
-				fmt.Printf("- %v\n", u)
+			_, err = c.Unlock(a, keySalts, mailboxPassword)
+			if err != nil {
+				log.Fatal(err)
 			}
+
+			secretKey, bridgePassword, err := auth.GeneratePassword()
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			err = auth.EncryptAndSave(&auth.CachedAuth{
+				Auth:            *a,
+				LoginPassword:   loginPassword,
+				MailboxPassword: mailboxPassword,
+				KeySalts:        keySalts,
+			}, username, secretKey)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			fmt.Println("Bridge password:", bridgePassword)
+			break
 		}
+
+		log.Fatal("usage: hydroxide auth <command>")
 	case "export-secret-keys":
 		exportSecretKeysCmd.Parse(flag.Args()[1:])
 		username := exportSecretKeysCmd.Arg(0)
